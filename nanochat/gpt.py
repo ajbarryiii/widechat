@@ -160,6 +160,72 @@ class ParallelMLP(nn.Module):
         return x
 
 
+class ParallelCausalSelfAttention(nn.Module):
+    def __init__(self, config, layer_idx):
+        super().__init__()
+        self.layer_idx = layer_idx
+        self.n_branches = config.n_branches
+        self.n_head = config.n_head
+        self.n_kv_head = config.n_kv_head
+        self.n_embd = config.n_embd
+        self.head_dim = self.n_embd // self.n_head
+        assert self.n_embd % self.n_head == 0
+        assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
+        self.c_q = BatchedLinear(self.n_branches, self.n_embd, self.n_head * self.head_dim)
+        self.c_k = BatchedLinear(self.n_branches, self.n_embd, self.n_kv_head * self.head_dim)
+        self.c_v = BatchedLinear(self.n_branches, self.n_embd, self.n_kv_head * self.head_dim)
+        self.c_proj = BatchedLinear(self.n_branches, self.n_embd, self.n_embd)
+        self.ve_gate_channels = 32
+        self.ve_gate = nn.Parameter(torch.empty(self.n_branches, self.n_kv_head, self.ve_gate_channels)) if has_ve(layer_idx, config.n_layer) else None
+
+    def _flatten_attention_tensor(self, x):
+        assert x.ndim == 5, f"Expected shape (N, T, R, H, D), got {tuple(x.shape)}"
+        n, t, r, h, d = x.shape
+        assert r == self.n_branches, f"Expected R={self.n_branches}, got R={r}"
+        return x.permute(0, 2, 1, 3, 4).reshape(n * r, t, h, d)
+
+    def _unflatten_attention_tensor(self, x, n, t):
+        assert x.ndim == 4, f"Expected shape (N*R, T, H, D), got {tuple(x.shape)}"
+        assert x.size(0) == n * self.n_branches, f"Expected N*R={n * self.n_branches}, got {x.size(0)}"
+        assert x.size(1) == t, f"Expected T={t}, got T={x.size(1)}"
+        return x.view(n, self.n_branches, t, x.size(2), x.size(3)).permute(0, 2, 1, 3, 4)
+
+    def forward(self, x, ve, cos_sin, window_size, kv_cache):
+        assert kv_cache is None, "ParallelCausalSelfAttention kv_cache path is not implemented"
+        n, t, c = x.shape[0], x.shape[1], x.shape[3]
+        assert x.ndim == 4, f"Expected x to have shape (N, T, R, C), got {tuple(x.shape)}"
+        assert x.size(2) == self.n_branches, f"Expected R={self.n_branches}, got R={x.size(2)}"
+        assert c == self.n_embd, f"Expected C={self.n_embd}, got C={c}"
+
+        q = self.c_q(x).view(n, t, self.n_branches, self.n_head, self.head_dim)
+        k = self.c_k(x).view(n, t, self.n_branches, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(n, t, self.n_branches, self.n_kv_head, self.head_dim)
+
+        if ve is not None:
+            assert ve.shape == (n, t, self.n_branches, self.n_kv_head, self.head_dim), (
+                f"Expected ve shape {(n, t, self.n_branches, self.n_kv_head, self.head_dim)}, got {tuple(ve.shape)}"
+            )
+            gate_weight = self.ve_gate
+            if gate_weight is None:
+                raise AssertionError("ve must be None for layers without value embedding gate")
+            gate = 2 * torch.sigmoid(torch.einsum('ntrc,rhc->ntrh', x[..., :self.ve_gate_channels], gate_weight))
+            v = v + gate.unsqueeze(-1) * ve
+
+        q_flat = self._flatten_attention_tensor(q)
+        k_flat = self._flatten_attention_tensor(k)
+        v_flat = self._flatten_attention_tensor(v)
+
+        cos, sin = cos_sin
+        q_flat = apply_rotary_emb(q_flat, cos, sin)
+        k_flat = apply_rotary_emb(k_flat, cos, sin)
+        q_flat, k_flat = norm(q_flat), norm(k_flat)
+
+        y_flat = flash_attn.flash_attn_func(q_flat, k_flat, v_flat, causal=True, window_size=window_size)
+        y = self._unflatten_attention_tensor(y_flat, n, t).contiguous().view(n, t, self.n_branches, self.n_embd)
+        y = self.c_proj(y)
+        return y
+
+
 class Block(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()

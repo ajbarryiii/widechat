@@ -107,7 +107,7 @@ Examples:
   - [x] einsum form: `torch.einsum('ntri,roi->ntro', x, w)`
 - [ ] Add branch-aware block modules (attention + MLP) for shape `(N,T,R,C)`.
   - [x] Add `ParallelMLP` using `BatchedLinear` with `relu^2` activation, plus unit test parity vs per-branch `nn.Linear` reference.
-  - [ ] Add branch-aware attention module with explicit `(N,T,R,*) <-> (N*R,T,*)` reshape contract.
+  - [x] Add branch-aware attention module with explicit `(N,T,R,*) <-> (N*R,T,*)` reshape contract.
   - [ ] Compose branch-aware block (`ParallelBlock`) with residual updates for `(N,T,R,C)`.
 - [ ] Keep baseline path for `n_branches=1` as close as possible to current behavior.
 - [ ] Update `forward()` with:
@@ -132,6 +132,11 @@ Examples:
 - Phase 2: KV cache layout update for branch-flattened batch (`N*R`) where needed.
 - Preserve non-branched inference path unchanged.
 
+### F) `nanochat/flash_attention.py` (Blackwell prerequisite)
+- Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.
+- Target NVIDIA Blackwell (RTX 5090) as primary path, with SDPA fallback retained.
+- Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
+
 ## Testing Plan (Rigorous)
 
 ### Unit tests
@@ -146,6 +151,7 @@ Examples:
 ### Integration tests
 1. Short train smoke on CPU (very small model): no crashes, finite loss.
 2. Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
+3. Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
 
 ### Benchmark tests
 1. Throughput benchmark at fixed `N`, `T`, and total batch:
@@ -183,5 +189,6 @@ Examples:
 ## Deliverables
 1. Branch-capable training code path with `n_branches` config.
 2. Tests covering correctness, checkpoint compatibility, and parameter counting.
-3. Throughput report for baseline and key breadth-heavy configs.
-4. Pilot sweep table with speed/quality ranking and selected finalists.
+3. Flash Attention 4 migration for Blackwell GPUs (RTX 5090), with verified runtime backend selection.
+4. Throughput report for baseline and key breadth-heavy configs.
+5. Pilot sweep table with speed/quality ranking and selected finalists.
