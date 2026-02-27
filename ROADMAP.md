@@ -149,7 +149,7 @@ Examples:
 - [x] Config-plumbing tests: `n_branches` defaulting/patching and explicit guard for unsupported `n_branches>1`.
 
 ### Integration tests
-- [ ] Short train smoke on CPU (very small model): no crashes, finite loss.
+- [x] Short train smoke on CPU (very small model): no crashes, finite loss.
 - [ ] Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
 - [ ] Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
 
