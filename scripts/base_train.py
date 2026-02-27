@@ -31,7 +31,7 @@ from nanochat.tokenizer import get_tokenizer, get_token_bytes
 from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
-from nanochat.flash_attention import HAS_FA3
+from nanochat.flash_attention import HAS_FA4, HAS_FA3, HAS_FLASH_ATTN, _backend_name
 from scripts.base_eval import evaluate_core
 print_banner()
 
@@ -102,12 +102,22 @@ use_dummy_wandb = args.run == "dummy" or not master_process
 wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat", name=args.run, config=user_config)
 
 # Flash Attention status
-if HAS_FA3:
-    print0("✓ Using Flash Attention 3 (Hopper GPU detected), efficient, new and awesome.")
+backend_name = _backend_name()
+if HAS_FLASH_ATTN:
+    if backend_name == "fa4":
+        print0("✓ Using Flash Attention 4 backend (Blackwell path).")
+    elif backend_name == "fa3":
+        print0("✓ Using Flash Attention 3 backend (Hopper path).")
+    else:
+        # This only happens when SDPA is explicitly forced in tests/dev.
+        print0("WARNING: Flash Attention backend override is set to SDPA.")
+elif HAS_FA4 or HAS_FA3:
+    # Defensive: should be covered by HAS_FLASH_ATTN, but keep a clear fallback.
+    print0("✓ Using Flash Attention backend.")
 else:
     print0("!" * 80)
-    print0("WARNING: Flash Attention 3 not available, using PyTorch SDPA fallback")
-    print0("WARNING: Training will be less efficient without FA3")
+    print0("WARNING: Flash Attention kernels not available, using PyTorch SDPA fallback")
+    print0("WARNING: Training will be less efficient without Flash Attention")
     if args.window_pattern != "L":
         print0(f"WARNING: SDPA has no support for sliding window attention (window_pattern='{args.window_pattern}'). Your GPU utilization will be terrible.")
         print0("WARNING: Recommend using --window-pattern L for full context attention without alternating sliding window patterns.")
