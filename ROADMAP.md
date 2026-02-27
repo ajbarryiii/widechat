@@ -124,61 +124,61 @@ Examples:
   - [x] if `n_branches` absent in old checkpoints, default to `1`.
 
 ### D) `nanochat/optim.py` and `nanochat/gpt.py`
-- Phase 1 (simplest): put new batched branch projection weights on AdamW for correctness bring-up.
-- Phase 2: add Muon support for batched weights with explicit flattening strategy and matching distributed path.
-- Ensure both `MuonAdamW` and `DistMuonAdamW` behavior are defined for new parameter groups.
+- [ ] Phase 1 (simplest): put new batched branch projection weights on AdamW for correctness bring-up.
+- [ ] Phase 2: add Muon support for batched weights with explicit flattening strategy and matching distributed path.
+- [ ] Ensure both `MuonAdamW` and `DistMuonAdamW` behavior are defined for new parameter groups.
 
 ### E) `nanochat/engine.py`
-- Phase 2: KV cache layout update for branch-flattened batch (`N*R`) where needed.
-- Preserve non-branched inference path unchanged.
+- [ ] Phase 2: KV cache layout update for branch-flattened batch (`N*R`) where needed.
+- [ ] Preserve non-branched inference path unchanged.
 
 ### F) `nanochat/flash_attention.py` (Blackwell prerequisite)
-- Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.
-- Target NVIDIA Blackwell (RTX 5090) as primary path, with SDPA fallback retained.
-- Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
+- [ ] Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.
+- [ ] Target NVIDIA Blackwell (RTX 5090) as primary path, with SDPA fallback retained.
+- [ ] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
 
 ### Unit tests
-- [ ] `BatchedLinear` matches equivalent per-branch `nn.Linear` outputs.
-- [ ] Gradient check for `BatchedLinear` (finite gradients, shape checks).
+- [x] `BatchedLinear` matches equivalent per-branch `nn.Linear` outputs.
+- [x] Gradient check for `BatchedLinear` (finite gradients, shape checks).
 - [x] `n_branches=1` parity smoke test against baseline path (forward loss and backward).
-- [ ] Attention reshape/unreshape roundtrip correctness.
-- [ ] Parameter counting test for at least `1x10` and `2x6`.
+- [x] Attention reshape/unreshape roundtrip correctness.
+- [x] Parameter counting test for at least `1x10` and `2x6`.
 - [ ] Checkpoint load test: old checkpoints without `n_branches` still load.
 - [x] Config-plumbing tests: `n_branches` defaulting/patching and explicit guard for unsupported `n_branches>1`.
 
 ### Integration tests
-1. Short train smoke on CPU (very small model): no crashes, finite loss.
-2. Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
-3. Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
+- [ ] Short train smoke on CPU (very small model): no crashes, finite loss.
+- [ ] Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
+- [ ] Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
 
 ### Benchmark tests
-1. Throughput benchmark at fixed `N`, `T`, and total batch:
-   - compare `12x1` vs `2x5` vs `1x10`
-2. Track:
-   - `train/tok_per_sec`
-   - `train/mfu`
-   - peak memory
+- [ ] Throughput benchmark at fixed `N`, `T`, and total batch.
+  - [ ] Compare `12x1` vs `2x5` vs `1x10`.
+- [ ] Track benchmark metrics.
+  - [ ] `train/tok_per_sec`
+  - [ ] `train/mfu`
+  - [ ] Peak memory.
 
 ## Experiment Plan (Two-Stage)
 
 ### Stage 0: Correctness bring-up
-- Run only `12x1` and `6x2` for short checks.
-- Exit criteria: all tests pass, no instability.
+- [ ] Run only `12x1` and `6x2` for short checks.
+- [ ] Exit criteria: all tests pass, no instability.
 
 ### Stage 1: Short pilot sweep (all configs)
-- Run each config for a short pilot budget (recommended: 250M tokens each).
-- Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
-- Ranking rule:
-  1. Disqualify unstable runs.
-  2. Disqualify runs >5% slower than baseline unless loss is clearly better.
-  3. Rank remaining by val bpb at equal token budget.
+- [ ] Run each config for a short pilot budget (recommended: 250M tokens each).
+- [ ] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
+- [ ] Apply ranking rule.
+  - [ ] Disqualify unstable runs.
+  - [ ] Disqualify runs >5% slower than baseline unless loss is clearly better.
+  - [ ] Rank remaining by val bpb at equal token budget.
 
 ### Stage 2: Long runs (top candidates only)
-- Promote top 2-3 configs from pilots.
-- Run 1-2B token training for these only.
-- Compare convergence and final quality against baseline.
+- [ ] Promote top 2-3 configs from pilots.
+- [ ] Run 1-2B token training for these only.
+- [ ] Compare convergence and final quality against baseline.
 
 ## Risks and Mitigations
 - Optimizer complexity for 3D batched weights: stage Muon support after correctness path is stable.
@@ -187,8 +187,8 @@ Examples:
 - Benchmark noise: use fixed seeds, warmup steps, and identical data/loader settings for fair comparisons.
 
 ## Deliverables
-1. Branch-capable training code path with `n_branches` config.
-2. Tests covering correctness, checkpoint compatibility, and parameter counting.
-3. Flash Attention 4 migration for Blackwell GPUs (RTX 5090), with verified runtime backend selection.
-4. Throughput report for baseline and key breadth-heavy configs.
-5. Pilot sweep table with speed/quality ranking and selected finalists.
+- [ ] Branch-capable training code path with `n_branches` config.
+- [ ] Tests covering correctness, checkpoint compatibility, and parameter counting.
+- [ ] Flash Attention 4 migration for Blackwell GPUs (RTX 5090), with verified runtime backend selection.
+- [ ] Throughput report for baseline and key breadth-heavy configs.
+- [ ] Pilot sweep table with speed/quality ranking and selected finalists.
