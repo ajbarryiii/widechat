@@ -152,6 +152,8 @@ Examples:
 - [x] Short train smoke on CPU (very small model): no crashes, finite loss.
 - [x] Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
 - [ ] Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
+  - [x] Add backend-selection tests that simulate Blackwell (`sm100`) and assert FA4 is preferred/loaded.
+  - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests
 - [ ] Throughput benchmark at fixed `N`, `T`, and total batch.

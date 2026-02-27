@@ -16,6 +16,8 @@ Note on test structure:
 """
 import torch
 import pytest
+import sys
+from types import SimpleNamespace
 import nanochat.flash_attention as fa_module
 from nanochat.flash_attention import flash_attn, HAS_FA4, HAS_FA3, HAS_FLASH_ATTN, backend_status_message
 from nanochat.engine import KVCache
@@ -387,6 +389,45 @@ class TestOverrideMechanism:
         assert "selected=sdpa" in msg
         assert "mode=sdpa" in msg
         set_impl(None)
+
+    def test_auto_mode_prefers_fa4_when_available(self, monkeypatch):
+        monkeypatch.setattr(fa_module, "HAS_FA4", True)
+        monkeypatch.setattr(fa_module, "HAS_FA3", True)
+        monkeypatch.setattr(fa_module, "_override_impl", None)
+        assert fa_module._backend_name() == "fa4"
+
+
+class TestBlackwellSelection:
+    def test_load_flash_attention_4_uses_blackwell_kernel(self, monkeypatch):
+        calls = []
+
+        class FakeInterface:
+            def flash_attn_func(self, *args, **kwargs):
+                return None
+
+            def flash_attn_with_kvcache(self, *args, **kwargs):
+                return None
+
+        def fake_get_kernel(name):
+            calls.append(name)
+            return SimpleNamespace(flash_attn_interface=FakeInterface())
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (10, 0))
+        monkeypatch.setitem(sys.modules, "kernels", SimpleNamespace(get_kernel=fake_get_kernel))
+
+        interface = fa_module._load_flash_attention_4()
+
+        assert interface is not None
+        assert calls == ["varunneal/flash-attention-4"]
+
+    def test_load_flash_attention_4_skips_pre_blackwell(self, monkeypatch):
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (9, 0))
+
+        interface = fa_module._load_flash_attention_4()
+
+        assert interface is None
 
 
 if __name__ == "__main__":
