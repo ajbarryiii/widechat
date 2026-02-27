@@ -130,7 +130,7 @@ Examples:
 
 ### E) `nanochat/engine.py`
 - [x] Phase 2: KV cache layout update for branch-flattened batch (`N*R`) where needed.
-- [ ] Preserve non-branched inference path unchanged.
+- [x] Preserve non-branched inference path unchanged.
 
 ### F) `nanochat/flash_attention.py` (Blackwell prerequisite)
 - [x] Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.

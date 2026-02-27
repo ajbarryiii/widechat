@@ -20,6 +20,7 @@ class MockConfig:
     n_embd: int = 64
     n_layer: int = 2
     sequence_len: int = 128
+    n_branches: int = 1
 
 
 class MockModel:
@@ -45,6 +46,31 @@ class MockModel:
         # Uniform logits -> equal probability for all tokens
         logits = torch.zeros(B, T, self.vocab_size)
         return logits
+
+
+@dataclass
+class LegacyMockConfig:
+    """Legacy config shape without n_branches."""
+    n_kv_head: int = 4
+    n_head: int = 4
+    n_embd: int = 64
+    n_layer: int = 2
+    sequence_len: int = 128
+
+
+class TrackingMockModel(MockModel):
+    """Mock model that records KV cache and batch shapes per forward call."""
+    def __init__(self, config, vocab_size=262):
+        super().__init__(vocab_size=vocab_size)
+        self.config = config
+        self.forward_calls = []
+
+    def forward(self, ids, kv_cache=None):
+        self.forward_calls.append({
+            "ids_batch": ids.shape[0],
+            "kv_batch": None if kv_cache is None else kv_cache.batch_size,
+        })
+        return super().forward(ids, kv_cache=kv_cache)
 
 
 class ByteTokenizer:
@@ -300,3 +326,20 @@ def test_different_seeds_introduce_variation_when_temperature_nonzero():
 
     # Sanity check: sampling actually introduces variation
     assert len(outputs) > 1, "All seeds produced the same output which is statistically highly improbable."
+
+
+def test_generate_keeps_legacy_non_branched_kv_cache_shapes():
+    """Legacy model configs without n_branches should keep original KV cache batching."""
+    model = TrackingMockModel(config=LegacyMockConfig())
+    engine = Engine(model, ByteTokenizer())
+
+    prompt = [261, 72, 101, 108, 108, 111]
+    num_samples = 3
+    max_tokens = 2
+    engine.generate_batch(prompt, num_samples=num_samples, max_tokens=max_tokens, temperature=0.0, seed=1)
+
+    # One prefill call + one decode call per generated token.
+    assert len(model.forward_calls) == 1 + max_tokens
+    assert model.forward_calls[0] == {"ids_batch": 1, "kv_batch": 1}
+    for call in model.forward_calls[1:]:
+        assert call == {"ids_batch": num_samples, "kv_batch": num_samples}
