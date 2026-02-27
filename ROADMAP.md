@@ -142,7 +142,7 @@ Examples:
 ### Unit tests
 - [ ] `BatchedLinear` matches equivalent per-branch `nn.Linear` outputs.
 - [ ] Gradient check for `BatchedLinear` (finite gradients, shape checks).
-- [ ] `n_branches=1` parity smoke test against baseline path (forward loss and backward).
+- [x] `n_branches=1` parity smoke test against baseline path (forward loss and backward).
 - [ ] Attention reshape/unreshape roundtrip correctness.
 - [ ] Parameter counting test for at least `1x10` and `2x6`.
 - [ ] Checkpoint load test: old checkpoints without `n_branches` still load.
