@@ -33,6 +33,7 @@ class GPTConfig:
     n_head: int = 6 # number of query heads
     n_kv_head: int = 6 # number of key/value heads (GQA)
     n_embd: int = 768
+    n_branches: int = 1
     # Sliding window attention pattern string, tiled across layers. Final layer always L.
     # Characters: L=long (full context), S=short (half context)
     # Examples: "L"=all full context, "SL"=alternating, "SSL"=two short then one long
@@ -152,6 +153,8 @@ class GPT(nn.Module):
         """
         super().__init__()
         self.config = config
+        if config.n_branches != 1:
+            raise NotImplementedError("n_branches>1 is not implemented yet")
         # Compute per-layer window sizes for sliding window attention
         # window_size is (left, right) tuple: (-1, 0) for full context, (N, 0) for sliding window
         self.window_sizes = self._compute_window_sizes(config)
