@@ -112,7 +112,7 @@ Examples:
 - [ ] Keep baseline path for `n_branches=1` as close as possible to current behavior.
 - [ ] Update `forward()` with:
   - [x] `linear_in -> branch blocks -> linear_out`
-- [ ] Ensure `num_scaling_params()` and `estimate_flops()` account for new matrices.
+- [x] Ensure `num_scaling_params()` and `estimate_flops()` account for new matrices.
 
 ### B) `scripts/base_train.py`
 - [x] Add `--n-branches` CLI arg.
