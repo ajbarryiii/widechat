@@ -166,7 +166,7 @@ Examples:
 ## Experiment Plan (Two-Stage)
 
 ### Stage 0: Correctness bring-up
-- [ ] Run only `12x1` and `6x2` for short checks.
+- [x] Run only `12x1` and `6x2` for short checks.
 - [ ] Exit criteria: all tests pass, no instability.
 
 ### Stage 1: Short pilot sweep (all configs)
