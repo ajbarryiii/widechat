@@ -57,6 +57,21 @@ def apply_rotary_emb(x, cos, sin):
     y2 = x1 * (-sin) + x2 * cos
     return torch.cat([y1, y2], 3)
 
+
+class BatchedLinear(nn.Module):
+    def __init__(self, n_branches, in_features, out_features):
+        super().__init__()
+        self.n_branches = n_branches
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(n_branches, out_features, in_features))
+
+    def forward(self, x):
+        assert x.ndim == 4, f"Expected x to have shape (N, T, R, I), got {tuple(x.shape)}"
+        assert x.size(2) == self.n_branches, f"Expected R={self.n_branches}, got R={x.size(2)}"
+        assert x.size(3) == self.in_features, f"Expected I={self.in_features}, got I={x.size(3)}"
+        return torch.einsum('ntri,roi->ntro', x, self.weight)
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()

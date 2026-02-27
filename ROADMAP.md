@@ -101,10 +101,10 @@ Examples:
 
 ### A) `nanochat/gpt.py`
 - [x] Phase 0: add `n_branches` to `GPTConfig` with default `1` and explicitly guard `n_branches>1` as not-yet-implemented.
-- [ ] Add `BatchedLinear`:
-  - [ ] weight shape `(R, O, I)`
-  - [ ] forward contract: `x (N,T,R,I)` -> `y (N,T,R,O)`
-  - [ ] einsum form: `torch.einsum('ntri,roi->ntro', x, w)`
+- [x] Add `BatchedLinear`:
+  - [x] weight shape `(R, O, I)`
+  - [x] forward contract: `x (N,T,R,I)` -> `y (N,T,R,O)`
+  - [x] einsum form: `torch.einsum('ntri,roi->ntro', x, w)`
 - [ ] Add branch-aware block modules (attention + MLP) for shape `(N,T,R,C)`.
 - [ ] Keep baseline path for `n_branches=1` as close as possible to current behavior.
 - [ ] Update `forward()` with:
