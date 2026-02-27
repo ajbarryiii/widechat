@@ -135,7 +135,7 @@ Examples:
 ### F) `nanochat/flash_attention.py` (Blackwell prerequisite)
 - [x] Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.
 - [ ] Target NVIDIA Blackwell (RTX 5090) as primary path, with SDPA fallback retained.
-- [ ] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
+- [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
 

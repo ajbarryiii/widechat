@@ -92,6 +92,23 @@ def _backend_name():
     return 'sdpa'
 
 
+def backend_status_message():
+    """Return an explicit one-line backend status message for logs."""
+    backend_name = _backend_name()
+    override = _override_impl if _override_impl is not None else "auto"
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        capability = f"{major}.{minor}"
+    else:
+        capability = "n/a"
+    return (
+        "Flash Attention backend selection: "
+        f"selected={backend_name}, mode={override}, has_fa4={HAS_FA4}, "
+        f"has_fa3={HAS_FA3}, cuda_available={torch.cuda.is_available()}, "
+        f"cuda_cc={capability}"
+    )
+
+
 def _use_fa3():
     """Backward-compatibility helper used by older tests."""
     return _backend_name() == 'fa3'

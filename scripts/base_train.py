@@ -31,7 +31,7 @@ from nanochat.tokenizer import get_tokenizer, get_token_bytes
 from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
-from nanochat.flash_attention import HAS_FA4, HAS_FA3, HAS_FLASH_ATTN, _backend_name
+from nanochat.flash_attention import HAS_FA4, HAS_FA3, HAS_FLASH_ATTN, _backend_name, backend_status_message
 from scripts.base_eval import evaluate_core
 print_banner()
 
@@ -103,6 +103,7 @@ wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat", 
 
 # Flash Attention status
 backend_name = _backend_name()
+print0(backend_status_message())
 if HAS_FLASH_ATTN:
     if backend_name == "fa4":
         print0("✓ Using Flash Attention 4 backend (Blackwell path).")

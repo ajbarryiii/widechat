@@ -17,7 +17,7 @@ Note on test structure:
 import torch
 import pytest
 import nanochat.flash_attention as fa_module
-from nanochat.flash_attention import flash_attn, HAS_FA4, HAS_FA3, HAS_FLASH_ATTN
+from nanochat.flash_attention import flash_attn, HAS_FA4, HAS_FA3, HAS_FLASH_ATTN, backend_status_message
 from nanochat.engine import KVCache
 
 
@@ -373,6 +373,20 @@ class TestOverrideMechanism:
         set_impl(None)
         expected = FAST_IMPL if FAST_IMPL is not None else 'sdpa'
         assert fa_module._backend_name() == expected
+
+    def test_backend_status_message_auto_contains_selected_backend(self):
+        set_impl(None)
+        expected = FAST_IMPL if FAST_IMPL is not None else 'sdpa'
+        msg = backend_status_message()
+        assert f"selected={expected}" in msg
+        assert "mode=auto" in msg
+
+    def test_backend_status_message_sdpa_override_is_explicit(self):
+        set_impl('sdpa')
+        msg = backend_status_message()
+        assert "selected=sdpa" in msg
+        assert "mode=sdpa" in msg
+        set_impl(None)
 
 
 if __name__ == "__main__":

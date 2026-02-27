@@ -22,7 +22,7 @@ from nanochat.tokenizer import get_token_bytes
 from nanochat.checkpoint_manager import save_checkpoint, load_model, load_optimizer_state
 from nanochat.loss_eval import evaluate_bpb
 import torch.distributed as dist
-from nanochat.flash_attention import HAS_FLASH_ATTN, _backend_name
+from nanochat.flash_attention import HAS_FLASH_ATTN, _backend_name, backend_status_message
 from nanochat.engine import Engine
 from scripts.chat_eval import run_chat_eval
 
@@ -91,8 +91,10 @@ wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat-sf
 
 # Flash Attention status
 if not HAS_FLASH_ATTN:
+    print0(backend_status_message())
     print0("WARNING: Flash Attention kernels not available, using PyTorch SDPA fallback. Training will be less efficient.")
 else:
+    print0(backend_status_message())
     print0(f"Using Flash Attention backend: {_backend_name()}")
 
 # Load the model and tokenizer
