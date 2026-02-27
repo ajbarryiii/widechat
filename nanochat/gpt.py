@@ -191,7 +191,6 @@ class ParallelCausalSelfAttention(nn.Module):
         return x.view(n, self.n_branches, t, x.size(2), x.size(3)).permute(0, 2, 1, 3, 4)
 
     def forward(self, x, ve, cos_sin, window_size, kv_cache):
-        assert kv_cache is None, "ParallelCausalSelfAttention kv_cache path is not implemented"
         n, t, c = x.shape[0], x.shape[1], x.shape[3]
         assert x.ndim == 4, f"Expected x to have shape (N, T, R, C), got {tuple(x.shape)}"
         assert x.size(2) == self.n_branches, f"Expected R={self.n_branches}, got R={x.size(2)}"
@@ -220,7 +219,23 @@ class ParallelCausalSelfAttention(nn.Module):
         k_flat = apply_rotary_emb(k_flat, cos, sin)
         q_flat, k_flat = norm(q_flat), norm(k_flat)
 
-        y_flat = flash_attn.flash_attn_func(q_flat, k_flat, v_flat, causal=True, window_size=window_size)
+        if kv_cache is None:
+            y_flat = flash_attn.flash_attn_func(q_flat, k_flat, v_flat, causal=True, window_size=window_size)
+        else:
+            expected_batch = n * self.n_branches
+            assert kv_cache.cache_seqlens.numel() == expected_batch, (
+                f"Expected kv_cache batch={expected_batch}, got {kv_cache.cache_seqlens.numel()}"
+            )
+            k_cache, v_cache = kv_cache.get_layer_cache(self.layer_idx)
+            y_flat = flash_attn.flash_attn_with_kvcache(
+                q_flat, k_cache, v_cache,
+                k=k_flat, v=v_flat,
+                cache_seqlens=kv_cache.cache_seqlens,
+                causal=True,
+                window_size=window_size,
+            )
+            if self.layer_idx == kv_cache.n_layers - 1:
+                kv_cache.advance(t)
         y = self._unflatten_attention_tensor(y_flat, n, t).contiguous().view(n, t, self.n_branches, self.n_embd)
         y = self.c_proj(y)
         return y
@@ -532,10 +547,14 @@ class GPT(nn.Module):
                 x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
             x = norm(x)
         else:
-            assert kv_cache is None, "kv_cache path for n_branches>1 is not implemented"
             n_branches = self.config.n_branches
             n_kv_head = self.config.n_kv_head
             head_dim = self.config.n_embd // self.config.n_head
+            if kv_cache is not None:
+                expected_batch = B * n_branches
+                assert kv_cache.cache_seqlens.numel() == expected_batch, (
+                    f"Expected kv_cache batch={expected_batch}, got {kv_cache.cache_seqlens.numel()}"
+                )
             x = self.branch_proj["linear_in"](x).view(B, T, n_branches, self.config.n_embd)
             x0 = x0.unsqueeze(2)
             for i, block in enumerate(self.transformer.h):

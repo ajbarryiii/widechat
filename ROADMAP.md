@@ -129,7 +129,7 @@ Examples:
 - [x] Ensure both `MuonAdamW` and `DistMuonAdamW` behavior are defined for new parameter groups.
 
 ### E) `nanochat/engine.py`
-- [ ] Phase 2: KV cache layout update for branch-flattened batch (`N*R`) where needed.
+- [x] Phase 2: KV cache layout update for branch-flattened batch (`N*R`) where needed.
 - [ ] Preserve non-branched inference path unchanged.
 
 ### F) `nanochat/flash_attention.py` (Blackwell prerequisite)

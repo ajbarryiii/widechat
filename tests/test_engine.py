@@ -155,6 +155,41 @@ def test_kv_cache_prefill():
     assert (dst_cache.v_cache[0, 0, :16, :, :] == 2.0).all()
 
 
+def test_kv_cache_prefill_repeats_source_batches_in_order():
+    src_cache = KVCache(
+        batch_size=2,
+        num_heads=1,
+        seq_len=8,
+        head_dim=1,
+        num_layers=1,
+        device="cpu",
+        dtype=torch.float32,
+    )
+    src_cache.k_cache[0, 0, :4, 0, 0] = 11.0
+    src_cache.k_cache[0, 1, :4, 0, 0] = 22.0
+    src_cache.v_cache[0, 0, :4, 0, 0] = 101.0
+    src_cache.v_cache[0, 1, :4, 0, 0] = 202.0
+    src_cache.advance(4)
+
+    dst_cache = KVCache(
+        batch_size=6,
+        num_heads=1,
+        seq_len=8,
+        head_dim=1,
+        num_layers=1,
+        device="cpu",
+        dtype=torch.float32,
+    )
+    dst_cache.prefill(src_cache)
+
+    expected_k = [11.0, 22.0, 11.0, 22.0, 11.0, 22.0]
+    expected_v = [101.0, 202.0, 101.0, 202.0, 101.0, 202.0]
+    for i in range(6):
+        assert (dst_cache.k_cache[0, i, :4, 0, 0] == expected_k[i]).all()
+        assert (dst_cache.v_cache[0, i, :4, 0, 0] == expected_v[i]).all()
+    assert dst_cache.get_pos() == 4
+
+
 def test_multi_sample_first_token_diversity():
     """
     Test that when generating multiple samples, each sample gets an independently

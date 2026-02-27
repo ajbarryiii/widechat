@@ -82,3 +82,40 @@ def test_n_branches_1_uses_baseline_block_path_and_kv_cache():
 
     assert logits.shape == (2, 8, config.vocab_size)
     assert kv_cache.get_pos() == 8
+
+
+def test_n_branches_gt_1_supports_kv_cache_path():
+    config = GPTConfig(
+        sequence_len=16,
+        vocab_size=32,
+        n_layer=2,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=64,
+        n_branches=2,
+    )
+
+    model = GPT(config)
+    model.init_weights()
+
+    batch_size = 2
+    prefill_len = 6
+    kv_cache = KVCache(
+        batch_size=batch_size * config.n_branches,
+        num_heads=config.n_kv_head,
+        seq_len=config.sequence_len,
+        head_dim=config.n_embd // config.n_head,
+        num_layers=config.n_layer,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+
+    idx = torch.randint(0, config.vocab_size, (batch_size, prefill_len), dtype=torch.long)
+    logits = model(idx, kv_cache=kv_cache)
+    assert logits.shape == (batch_size, prefill_len, config.vocab_size)
+    assert kv_cache.get_pos() == prefill_len
+
+    next_idx = torch.randint(0, config.vocab_size, (batch_size, 1), dtype=torch.long)
+    next_logits = model(next_idx, kv_cache=kv_cache)
+    assert next_logits.shape == (batch_size, 1, config.vocab_size)
+    assert kv_cache.get_pos() == prefill_len + 1
