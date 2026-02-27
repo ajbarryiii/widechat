@@ -150,7 +150,7 @@ Examples:
 
 ### Integration tests
 - [x] Short train smoke on CPU (very small model): no crashes, finite loss.
-- [ ] Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
+- [x] Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
 - [ ] Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
 
 ### Benchmark tests
