@@ -124,7 +124,7 @@ Examples:
   - [x] if `n_branches` absent in old checkpoints, default to `1`.
 
 ### D) `nanochat/optim.py` and `nanochat/gpt.py`
-- [ ] Phase 1 (simplest): put new batched branch projection weights on AdamW for correctness bring-up.
+- [x] Phase 1 (simplest): put new batched branch projection weights on AdamW for correctness bring-up.
 - [ ] Phase 2: add Muon support for batched weights with explicit flattening strategy and matching distributed path.
 - [ ] Ensure both `MuonAdamW` and `DistMuonAdamW` behavior are defined for new parameter groups.
 
