@@ -259,8 +259,7 @@ class GPT(nn.Module):
         """
         super().__init__()
         self.config = config
-        if config.n_branches != 1:
-            raise NotImplementedError("n_branches>1 is not implemented yet")
+        self.uses_parallel_branches = config.n_branches > 1
         # Compute per-layer window sizes for sliding window attention
         # window_size is (left, right) tuple: (-1, 0) for full context, (N, 0) for sliding window
         self.window_sizes = self._compute_window_sizes(config)
@@ -269,10 +268,15 @@ class GPT(nn.Module):
         padded_vocab_size = ((config.vocab_size + pad_vocab_size_to - 1) // pad_vocab_size_to) * pad_vocab_size_to
         if padded_vocab_size != config.vocab_size:
             print0(f"Padding vocab_size from {config.vocab_size} to {padded_vocab_size} for efficiency")
+        blocks = [ParallelBlock(config, layer_idx) for layer_idx in range(config.n_layer)] if self.uses_parallel_branches else [Block(config, layer_idx) for layer_idx in range(config.n_layer)]
         self.transformer = nn.ModuleDict({
             "wte": nn.Embedding(padded_vocab_size, config.n_embd),
-            "h": nn.ModuleList([Block(config, layer_idx) for layer_idx in range(config.n_layer)]),
+            "h": nn.ModuleList(blocks),
         })
+        self.branch_proj = nn.ModuleDict({
+            "linear_in": nn.Linear(config.n_embd, config.n_branches * config.n_embd, bias=False),
+            "linear_out": nn.Linear(config.n_branches * config.n_embd, config.n_embd, bias=False),
+        }) if self.uses_parallel_branches else None
         self.lm_head = nn.Linear(config.n_embd, padded_vocab_size, bias=False)
         # Per-layer learnable scalars (inspired by modded-nanogpt)
         # resid_lambdas: scales the residual stream at each layer (init 1.0 = neutral)
@@ -325,6 +329,10 @@ class GPT(nn.Module):
             torch.nn.init.uniform_(block.mlp.c_fc.weight, -s, s)
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
 
+        if self.branch_proj is not None:
+            torch.nn.init.uniform_(self.branch_proj["linear_in"].weight, -s, s)
+            torch.nn.init.zeros_(self.branch_proj["linear_out"].weight)
+
         # Per-layer scalars
         self.resid_lambdas.fill_(1.0)   # 1.0 => typical residual connections at init
         self.x0_lambdas.fill_(0.1)      # 0.1 => small initial weight for skip connection to input embedding
@@ -336,7 +344,10 @@ class GPT(nn.Module):
         # Gate weights init to zero so gates start at sigmoid(0) = 0.5, scaled by 2 -> 1.0 (neutral)
         for block in self.transformer.h:
             if block.attn.ve_gate is not None:
-                torch.nn.init.zeros_(block.attn.ve_gate.weight)
+                if isinstance(block.attn.ve_gate, nn.Parameter):
+                    torch.nn.init.zeros_(block.attn.ve_gate)
+                else:
+                    torch.nn.init.zeros_(block.attn.ve_gate.weight)
 
         # Rotary embeddings
         head_dim = self.config.n_embd // self.config.n_head
@@ -442,6 +453,8 @@ class GPT(nn.Module):
         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
         lm_head = sum(p.numel() for p in self.lm_head.parameters())
         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
+        if self.branch_proj is not None:
+            transformer_matrices += sum(p.numel() for p in self.branch_proj.parameters())
         scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel()
         total = wte + value_embeds + lm_head + transformer_matrices + scalars
         assert total == sum(p.numel() for p in self.parameters()), "Parameter count mismatch"
@@ -460,12 +473,13 @@ class GPT(nn.Module):
 
         # Separate out all parameters into groups
         matrix_params = list(self.transformer.h.parameters())
+        branch_projection_params = list(self.branch_proj.parameters()) if self.branch_proj is not None else []
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
         resid_params = [self.resid_lambdas]
         x0_params = [self.x0_lambdas]
-        assert len(list(self.parameters())) == len(matrix_params) + len(embedding_params) + len(lm_head_params) + len(value_embeds_params) + len(resid_params) + len(x0_params)
+        assert len(list(self.parameters())) == len(matrix_params) + len(branch_projection_params) + len(embedding_params) + len(lm_head_params) + len(value_embeds_params) + len(resid_params) + len(x0_params)
 
         # Scale the LR for the AdamW parameters by ∝1/√dmodel (tuned for 768 dim model)
         dmodel_lr_scale = (model_dim / 768) ** -0.5
@@ -477,6 +491,7 @@ class GPT(nn.Module):
             dict(kind='adamw', params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+            dict(kind='adamw', params=branch_projection_params, lr=matrix_lr, betas=adam_betas, eps=1e-10, weight_decay=weight_decay),
             dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),  # higher beta1 for x0
         ]
@@ -509,11 +524,29 @@ class GPT(nn.Module):
         x = self.transformer.wte(idx) # embed current token
         x = norm(x)
         x0 = x  # save initial normalized embedding for x0 residual
-        for i, block in enumerate(self.transformer.h):
-            x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
-            ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None
-            x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
-        x = norm(x)
+        if self.branch_proj is None:
+            for i, block in enumerate(self.transformer.h):
+                x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
+                ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None
+                x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
+            x = norm(x)
+        else:
+            assert kv_cache is None, "kv_cache path for n_branches>1 is not implemented"
+            n_branches = self.config.n_branches
+            n_kv_head = self.config.n_kv_head
+            head_dim = self.config.n_embd // self.config.n_head
+            x = self.branch_proj["linear_in"](x).view(B, T, n_branches, self.config.n_embd)
+            x0 = x0.unsqueeze(2)
+            for i, block in enumerate(self.transformer.h):
+                x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
+                if str(i) in self.value_embeds:
+                    ve = self.value_embeds[str(i)](idx).view(B, T, n_kv_head, head_dim).unsqueeze(2).expand(B, T, n_branches, n_kv_head, head_dim)
+                else:
+                    ve = None
+                x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
+            x = x.contiguous().view(B, T, n_branches * self.config.n_embd)
+            x = self.branch_proj["linear_out"](x)
+            x = norm(x)
 
         # Forward the lm_head (compute logits)
         softcap = 15 # smoothly cap the logits to the range [-softcap, softcap]

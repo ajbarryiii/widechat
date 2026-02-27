@@ -111,7 +111,7 @@ Examples:
   - [x] Compose branch-aware block (`ParallelBlock`) with residual updates for `(N,T,R,C)`.
 - [ ] Keep baseline path for `n_branches=1` as close as possible to current behavior.
 - [ ] Update `forward()` with:
-  - [ ] `linear_in -> branch blocks -> linear_out`
+  - [x] `linear_in -> branch blocks -> linear_out`
 - [ ] Ensure `num_scaling_params()` and `estimate_flops()` account for new matrices.
 
 ### B) `scripts/base_train.py`
