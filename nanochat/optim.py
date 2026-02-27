@@ -387,14 +387,14 @@ class DistMuonAdamW(torch.optim.Optimizer):
             grad = p.grad
             if p.numel() < 1024:
                 # Small params: all_reduce (no scatter/gather needed)
-                future = dist.all_reduce(grad, op=dist.ReduceOp.AVG, async_op=True).get_future()
+                future = dist.all_reduce(grad, op=dist.ReduceOp.AVG, async_op=True)
                 param_infos[p] = dict(future=future, grad_slice=grad, is_small=True)
             else:
                 # Large params: reduce_scatter
                 assert grad.shape[0] % world_size == 0, f"AdamW reduce_scatter requires shape[0] ({grad.shape[0]}) divisible by world_size ({world_size})"
                 rank_size = grad.shape[0] // world_size
                 grad_slice = torch.empty_like(grad[:rank_size])
-                future = dist.reduce_scatter_tensor(grad_slice, grad, op=dist.ReduceOp.AVG, async_op=True).get_future()
+                future = dist.reduce_scatter_tensor(grad_slice, grad, op=dist.ReduceOp.AVG, async_op=True)
                 param_infos[p] = dict(future=future, grad_slice=grad_slice, is_small=False)
         return dict(param_infos=param_infos)
 
@@ -418,7 +418,7 @@ class DistMuonAdamW(torch.optim.Optimizer):
 
         # Reduce_scatter to get this rank's chunk
         grad_chunk = torch.empty(chunk_size, *flat_shape, dtype=dtype, device=device)
-        future = dist.reduce_scatter_tensor(grad_chunk, stacked_grads, op=dist.ReduceOp.AVG, async_op=True).get_future()
+        future = dist.reduce_scatter_tensor(grad_chunk, stacked_grads, op=dist.ReduceOp.AVG, async_op=True)
 
         return dict(future=future, grad_chunk=grad_chunk, stacked_grads=stacked_grads, chunk_size=chunk_size, flat_shape=flat_shape)
 
@@ -460,7 +460,7 @@ class DistMuonAdamW(torch.optim.Optimizer):
 
             # Large params need all_gather
             if not pinfo['is_small']:
-                future = dist.all_gather_into_tensor(p, p_slice, async_op=True).get_future()
+                future = dist.all_gather_into_tensor(p, p_slice, async_op=True)
                 gather_list.append(dict(future=future, params=None))
 
     def _compute_muon(self, group: dict, info: dict, gather_list: list, rank: int) -> None:
@@ -495,7 +495,7 @@ class DistMuonAdamW(torch.optim.Optimizer):
 
             # Fill 0-D tensors and run fused kernel
             self._muon_momentum_t.fill_(group["momentum"])
-            self._muon_beta2_t.fill_(group["beta2"])
+            self._muon_beta2_t.fill_(group["beta2"] if group["beta2"] is not None else 0.0)
             self._muon_lr_t.fill_(group["lr"] * max(1.0, flat_shape[-2] / flat_shape[-1])**0.5)
             self._muon_wd_t.fill_(group["weight_decay"])
             muon_step_fused(
@@ -511,7 +511,7 @@ class DistMuonAdamW(torch.optim.Optimizer):
 
         # Reuse stacked_grads buffer for all_gather output
         stacked_params = info["stacked_grads"]
-        future = dist.all_gather_into_tensor(stacked_params, updated_params, async_op=True).get_future()
+        future = dist.all_gather_into_tensor(stacked_params, updated_params, async_op=True)
         gather_list.append(dict(future=future, stacked_params=stacked_params, params=params))
 
     def _finish_gathers(self, gather_list: list) -> None:
