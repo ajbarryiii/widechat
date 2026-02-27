@@ -145,7 +145,7 @@ Examples:
 - [x] `n_branches=1` parity smoke test against baseline path (forward loss and backward).
 - [x] Attention reshape/unreshape roundtrip correctness.
 - [x] Parameter counting test for at least `1x10` and `2x6`.
-- [ ] Checkpoint load test: old checkpoints without `n_branches` still load.
+- [x] Checkpoint load test: old checkpoints without `n_branches` still load.
 - [x] Config-plumbing tests: `n_branches` defaulting/patching and explicit guard for unsupported `n_branches>1`.
 
 ### Integration tests
