@@ -125,7 +125,7 @@ Examples:
 
 ### D) `nanochat/optim.py` and `nanochat/gpt.py`
 - [x] Phase 1 (simplest): put new batched branch projection weights on AdamW for correctness bring-up.
-- [ ] Phase 2: add Muon support for batched weights with explicit flattening strategy and matching distributed path.
+- [x] Phase 2: add Muon support for batched weights with explicit flattening strategy and matching distributed path.
 - [ ] Ensure both `MuonAdamW` and `DistMuonAdamW` behavior are defined for new parameter groups.
 
 ### E) `nanochat/engine.py`

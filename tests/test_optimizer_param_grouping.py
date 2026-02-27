@@ -5,7 +5,7 @@ def _param_ids(groups, kind):
     return {id(p) for group in groups if group["kind"] == kind for p in group["params"]}
 
 
-def test_batched_parallel_weights_use_adamw_not_muon():
+def test_batched_parallel_weights_use_muon_not_adamw():
     config = GPTConfig(
         sequence_len=16,
         vocab_size=64,
@@ -25,8 +25,8 @@ def test_batched_parallel_weights_use_adamw_not_muon():
     adamw_param_ids = _param_ids(optimizer.param_groups, "adamw")
     muon_param_ids = _param_ids(optimizer.param_groups, "muon")
 
-    assert batched_param_ids.issubset(adamw_param_ids)
-    assert batched_param_ids.isdisjoint(muon_param_ids)
+    assert batched_param_ids.issubset(muon_param_ids)
+    assert batched_param_ids.isdisjoint(adamw_param_ids)
 
 
 def test_baseline_matrix_weights_still_use_muon():

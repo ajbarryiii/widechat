@@ -473,8 +473,7 @@ class GPT(nn.Module):
 
         # Separate out all parameters into groups
         matrix_params = list(self.transformer.h.parameters())
-        batched_matrix_params = [p for p in matrix_params if p.ndim != 2]
-        muon_matrix_params = [p for p in matrix_params if p.ndim == 2]
+        muon_matrix_params = [p for p in matrix_params if p.ndim >= 2]
         branch_projection_params = list(self.branch_proj.parameters()) if self.branch_proj is not None else []
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
@@ -494,13 +493,12 @@ class GPT(nn.Module):
             dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=branch_projection_params, lr=matrix_lr, betas=adam_betas, eps=1e-10, weight_decay=weight_decay),
-            dict(kind='adamw', params=batched_matrix_params, lr=matrix_lr, betas=adam_betas, eps=1e-10, weight_decay=weight_decay),
             dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),  # higher beta1 for x0
         ]
         # Muon groups (matrix params, grouped by shape for stacking)
-        for shape in sorted({p.shape for p in muon_matrix_params}):
-            group_params = [p for p in muon_matrix_params if p.shape == shape]
+        for shape in sorted({(p.shape[-1], p.numel() // p.shape[-1]) for p in muon_matrix_params}):
+            group_params = [p for p in muon_matrix_params if (p.shape[-1], p.numel() // p.shape[-1]) == shape]
             param_groups.append(dict(
                 kind='muon', params=group_params, lr=matrix_lr,
                 momentum=0.95, ns_steps=5, beta2=0.95, weight_decay=weight_decay,
