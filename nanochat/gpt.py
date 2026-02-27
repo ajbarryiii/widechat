@@ -238,6 +238,18 @@ class Block(nn.Module):
         return x
 
 
+class ParallelBlock(nn.Module):
+    def __init__(self, config, layer_idx):
+        super().__init__()
+        self.attn = ParallelCausalSelfAttention(config, layer_idx)
+        self.mlp = ParallelMLP(config)
+
+    def forward(self, x, ve, cos_sin, window_size, kv_cache):
+        x = x + self.attn(norm(x), ve, cos_sin, window_size, kv_cache)
+        x = x + self.mlp(norm(x))
+        return x
+
+
 class GPT(nn.Module):
     def __init__(self, config, pad_vocab_size_to=64):
         """

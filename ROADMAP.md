@@ -108,7 +108,7 @@ Examples:
 - [ ] Add branch-aware block modules (attention + MLP) for shape `(N,T,R,C)`.
   - [x] Add `ParallelMLP` using `BatchedLinear` with `relu^2` activation, plus unit test parity vs per-branch `nn.Linear` reference.
   - [x] Add branch-aware attention module with explicit `(N,T,R,*) <-> (N*R,T,*)` reshape contract.
-  - [ ] Compose branch-aware block (`ParallelBlock`) with residual updates for `(N,T,R,C)`.
+  - [x] Compose branch-aware block (`ParallelBlock`) with residual updates for `(N,T,R,C)`.
 - [ ] Keep baseline path for `n_branches=1` as close as possible to current behavior.
 - [ ] Update `forward()` with:
   - [ ] `linear_in -> branch blocks -> linear_out`
