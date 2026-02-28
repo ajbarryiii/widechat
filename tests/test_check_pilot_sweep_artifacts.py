@@ -388,6 +388,44 @@ def test_main_dry_run_prints_resolved_paths_and_skips_validation(tmp_path, monke
     assert "check_in=True" in stdout
 
 
+def test_main_writes_blocked_markdown_on_validation_failure(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    blocked_md = tmp_path / "receipts" / "pilot_bundle_check_blocked.md"
+    finalists_md.write_text("## Stage 2 Finalists\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--check-in",
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="strict check-in requires full default pilot config coverage"):
+        checker.main()
+
+    markdown = blocked_md.read_text(encoding="utf-8")
+    assert "# Pilot Bundle Checker Blocked" in markdown
+    assert "## Context" in markdown
+    assert f"- ranked_json_arg: `{ranked_json}`" in markdown
+    assert f"- finalists_json_arg: `{finalists_json}`" in markdown
+    assert f"- finalists_md_arg: `{finalists_md}`" in markdown
+    assert "- check_in_mode: `true`" in markdown
+    assert f"- resolved_ranked_json: `{ranked_json}`" in markdown
+    assert f"- resolved_finalists_json: `{finalists_json}`" in markdown
+    assert f"- resolved_finalists_md: `{finalists_md}`" in markdown
+    assert "## Blocker" in markdown
+    assert "strict check-in requires full default pilot config coverage" in markdown
+
+
 def test_main_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     receipt_json = tmp_path / "pilot_bundle_check.json"

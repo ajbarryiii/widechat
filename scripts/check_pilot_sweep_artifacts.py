@@ -91,6 +91,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="only resolve artifact paths and print planned checker settings",
     )
+    parser.add_argument(
+        "--output-blocked-md",
+        default="",
+        help="optional path to write markdown blocker evidence when validation fails",
+    )
     return parser.parse_args()
 
 
@@ -542,6 +547,54 @@ def _write_check_receipt(
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _write_blocked_markdown(
+    *,
+    output_path: Path,
+    command: list[str],
+    reason: str,
+    artifacts_dir_arg: str,
+    artifacts_root_arg: str,
+    ranked_json_arg: str,
+    finalists_json_arg: str,
+    finalists_md_arg: str,
+    bundle_json_arg: str,
+    dry_run_mode: bool,
+    check_in_mode: bool,
+    resolved_ranked_json: Path | None,
+    resolved_finalists_json: Path | None,
+    resolved_finalists_md: Path | None,
+    resolved_bundle_json: Path | None,
+    output_check_json: str,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Pilot Bundle Checker Blocked",
+        "",
+        "## Context",
+        f"- command: `{json.dumps(command)}`",
+        f"- artifacts_dir_arg: `{artifacts_dir_arg}`",
+        f"- artifacts_root_arg: `{artifacts_root_arg}`",
+        f"- ranked_json_arg: `{ranked_json_arg}`",
+        f"- finalists_json_arg: `{finalists_json_arg}`",
+        f"- finalists_md_arg: `{finalists_md_arg}`",
+        f"- bundle_json_arg: `{bundle_json_arg}`",
+        f"- check_in_mode: `{str(check_in_mode).lower()}`",
+        f"- dry_run_mode: `{str(dry_run_mode).lower()}`",
+        f"- output_check_json: `{output_check_json}`",
+        f"- resolved_ranked_json: `{resolved_ranked_json if resolved_ranked_json is not None else ''}`",
+        f"- resolved_finalists_json: `{resolved_finalists_json if resolved_finalists_json is not None else ''}`",
+        f"- resolved_finalists_md: `{resolved_finalists_md if resolved_finalists_md is not None else ''}`",
+        f"- resolved_bundle_json: `{resolved_bundle_json if resolved_bundle_json is not None else ''}`",
+        "",
+        "## Blocker",
+        "```text",
+        reason,
+        "```",
+        "",
+    ]
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def run_pilot_bundle_check(
     *,
     ranked_json_path: Path,
@@ -645,60 +698,86 @@ def _resolve_bundle_json_path(
 
 def main() -> None:
     args = _parse_args()
-    ranked_json_path, finalists_json_path, finalists_md_path = _resolve_artifact_paths(
-        artifacts_dir_arg=args.artifacts_dir,
-        artifacts_root_arg=args.artifacts_root,
-        ranked_json_arg=args.ranked_json,
-        finalists_json_arg=args.finalists_json,
-        finalists_md_arg=args.finalists_md,
-    )
-    bundle_json_path = _resolve_bundle_json_path(
-        bundle_json_arg=args.bundle_json,
-        bundle_json_name=args.bundle_json_name,
-        artifacts_dir_arg=args.artifacts_dir,
-        ranked_json_path=ranked_json_path,
-    )
-
-    if args.dry_run:
-        dry_run_status = (
-            "pilot_bundle_check_dry_run_ok "
-            f"ranked_json={ranked_json_path} "
-            f"finalists_json={finalists_json_path} "
-            f"finalists_md={finalists_md_path} "
-            + (f"bundle_json={bundle_json_path} " if bundle_json_path is not None else "")
-            + f"require_real_input={args.require_real_input} "
-            + f"require_git_tracked={args.require_git_tracked} "
-            + f"check_in={args.check_in}"
-            + (f" check_json={args.output_check_json}" if args.output_check_json else "")
+    ranked_json_path = None
+    finalists_json_path = None
+    finalists_md_path = None
+    bundle_json_path = None
+    try:
+        ranked_json_path, finalists_json_path, finalists_md_path = _resolve_artifact_paths(
+            artifacts_dir_arg=args.artifacts_dir,
+            artifacts_root_arg=args.artifacts_root,
+            ranked_json_arg=args.ranked_json,
+            finalists_json_arg=args.finalists_json,
+            finalists_md_arg=args.finalists_md,
         )
+        bundle_json_path = _resolve_bundle_json_path(
+            bundle_json_arg=args.bundle_json,
+            bundle_json_name=args.bundle_json_name,
+            artifacts_dir_arg=args.artifacts_dir,
+            ranked_json_path=ranked_json_path,
+        )
+
+        if args.dry_run:
+            dry_run_status = (
+                "pilot_bundle_check_dry_run_ok "
+                f"ranked_json={ranked_json_path} "
+                f"finalists_json={finalists_json_path} "
+                f"finalists_md={finalists_md_path} "
+                + (f"bundle_json={bundle_json_path} " if bundle_json_path is not None else "")
+                + f"require_real_input={args.require_real_input} "
+                + f"require_git_tracked={args.require_git_tracked} "
+                + f"check_in={args.check_in}"
+                + (f" check_json={args.output_check_json}" if args.output_check_json else "")
+            )
+            print(
+                dry_run_status
+            )
+            return
+
+        finalists_count = run_pilot_bundle_check(
+            ranked_json_path=ranked_json_path,
+            finalists_json_path=finalists_json_path,
+            finalists_md_path=finalists_md_path,
+            require_real_input=args.require_real_input,
+            require_git_tracked=args.require_git_tracked,
+            check_in=args.check_in,
+            output_check_json=args.output_check_json,
+            bundle_json_path=bundle_json_path,
+        )
+
+        status_line = (
+            "pilot_bundle_check_ok "
+            f"finalists={finalists_count} "
+            f"ranked_json={ranked_json_path}"
+        )
+        if args.output_check_json:
+            status_line += f" check_json={args.output_check_json}"
+        if bundle_json_path is not None:
+            status_line += f" bundle_json={bundle_json_path}"
         print(
-            dry_run_status
+            status_line
         )
-        return
-
-    finalists_count = run_pilot_bundle_check(
-        ranked_json_path=ranked_json_path,
-        finalists_json_path=finalists_json_path,
-        finalists_md_path=finalists_md_path,
-        require_real_input=args.require_real_input,
-        require_git_tracked=args.require_git_tracked,
-        check_in=args.check_in,
-        output_check_json=args.output_check_json,
-        bundle_json_path=bundle_json_path,
-    )
-
-    status_line = (
-        "pilot_bundle_check_ok "
-        f"finalists={finalists_count} "
-        f"ranked_json={ranked_json_path}"
-    )
-    if args.output_check_json:
-        status_line += f" check_json={args.output_check_json}"
-    if bundle_json_path is not None:
-        status_line += f" bundle_json={bundle_json_path}"
-    print(
-        status_line
-    )
+    except RuntimeError:
+        if args.output_blocked_md:
+            _write_blocked_markdown(
+                output_path=Path(args.output_blocked_md),
+                command=[*sys.argv],
+                reason=str(sys.exc_info()[1]),
+                artifacts_dir_arg=args.artifacts_dir,
+                artifacts_root_arg=args.artifacts_root,
+                ranked_json_arg=args.ranked_json,
+                finalists_json_arg=args.finalists_json,
+                finalists_md_arg=args.finalists_md,
+                bundle_json_arg=args.bundle_json,
+                dry_run_mode=args.dry_run,
+                check_in_mode=args.check_in,
+                resolved_ranked_json=ranked_json_path,
+                resolved_finalists_json=finalists_json_path,
+                resolved_finalists_md=finalists_md_path,
+                resolved_bundle_json=bundle_json_path,
+                output_check_json=args.output_check_json,
+            )
+        raise
 
 
 if __name__ == "__main__":
