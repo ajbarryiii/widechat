@@ -7,6 +7,7 @@ python -m scripts.validate_blackwell_smoke_artifact --artifact-json artifacts/fl
 import argparse
 import json
 import re
+from pathlib import Path
 
 
 def _parse_args() -> argparse.Namespace:
@@ -19,6 +20,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4", help="required selected backend")
     parser.add_argument("--require-blackwell", action="store_true", help="require sm100+ CUDA capability in artifact")
+    parser.add_argument(
+        "--output-evidence-md",
+        default="",
+        help="optional path to write a markdown evidence summary for check-in/review",
+    )
     return parser.parse_args()
 
 
@@ -98,6 +104,47 @@ def _validate_status_line_consistency(payload: dict[str, object], status_line: s
     return parsed_backend
 
 
+def _capability_str(capability: tuple[int, int] | None) -> str:
+    if capability is None:
+        return "none"
+    return f"sm{capability[0]}{capability[1]}"
+
+
+def _write_evidence_markdown(
+    path: str,
+    payload: dict[str, object],
+    selected_backend: str,
+    capability: tuple[int, int] | None,
+    status_line_ok: bool,
+) -> None:
+    status_line = payload.get("status_line")
+    if not isinstance(status_line, str) or not status_line:
+        raise ValueError("artifact missing status_line string")
+
+    cuda_available = payload.get("cuda_available")
+    if not isinstance(cuda_available, bool):
+        raise ValueError("artifact missing cuda_available bool")
+
+    device_name = payload.get("device_name")
+    if device_name is not None and not isinstance(device_name, str):
+        raise ValueError("artifact device_name must be string or null")
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Blackwell Flash Backend Smoke Evidence",
+        "",
+        f"- selected_backend: `{selected_backend}`",
+        f"- cuda_available: `{str(cuda_available).lower()}`",
+        f"- cuda_capability: `{_capability_str(capability)}`",
+        f"- device_name: `{device_name if device_name is not None else 'none'}`",
+        f"- status_line_ok: `{str(status_line_ok).lower()}`",
+        f"- status_line: `{status_line}`",
+        "",
+    ]
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     payload = _load_artifact(args.artifact_json)
@@ -110,10 +157,9 @@ def main() -> None:
             raise RuntimeError(f"expected backend {args.expect_backend}, got {status_line_backend} in status-line file")
         status_line_ok = True
 
-    if capability is None:
-        capability_str = "none"
-    else:
-        capability_str = f"sm{capability[0]}{capability[1]}"
+    capability_str = _capability_str(capability)
+    if args.output_evidence_md:
+        _write_evidence_markdown(args.output_evidence_md, payload, selected_backend, capability, status_line_ok)
     print(f"artifact_ok selected={selected_backend} capability={capability_str} status_line_ok={status_line_ok}")
 
 
