@@ -142,6 +142,7 @@ Examples:
   - [x] Add explicit status-line artifact output (`--output-status-line`) so on-device validation can persist the canonical `selected=...` line without scraping stdout.
   - [x] Add smoke-artifact validation helper (`python -m scripts.validate_blackwell_smoke_artifact --artifact-json ... --expect-backend fa4 --require-blackwell`) and include CUDA device metadata in smoke JSON for auditable evidence checks.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
+    - [x] Add explicit RTX 5090 device-name preflight enforcement to `scripts.flash_backend_smoke` (`--require-device-substring`) and thread it through `scripts.run_blackwell_smoke_bundle` so non-5090 runs fail fast before emitting evidence artifacts.
     - [x] Add CUDA preflight diagnostics in `scripts.flash_backend_smoke` so on-device smoke failures report `nvidia-smi` GPU visibility and actionable PyTorch CUDA mismatch guidance when `torch.cuda.is_available()` is false.
     - [x] Add single-command artifact bundle output (`--output-dir`) in `scripts.flash_backend_smoke` so on-device validation can emit canonical JSON + status-line evidence in one run.
     - [x] Add status-line/JSON consistency validation support in `scripts.validate_blackwell_smoke_artifact` (`--status-line-file`) so on-device evidence checks fail fast when bundle artifacts drift.

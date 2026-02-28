@@ -73,6 +73,25 @@ def test_validate_environment_accepts_sm100(monkeypatch):
     _validate_environment(require_cuda=True, require_blackwell=True)
 
 
+def test_validate_environment_rejects_missing_required_device_substring(monkeypatch):
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "NVIDIA H100")
+    with pytest.raises(RuntimeError, match="does not include required substring"):
+        _validate_environment(require_cuda=False, require_blackwell=False, require_device_substring="RTX 5090")
+
+
+def test_validate_environment_accepts_required_device_substring_case_insensitive(monkeypatch):
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "NVIDIA GeForce RTX 5090")
+    _validate_environment(require_cuda=False, require_blackwell=False, require_device_substring="rtx 5090")
+
+
+def test_validate_environment_rejects_device_substring_check_without_cuda(monkeypatch):
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
+    with pytest.raises(RuntimeError, match="device-name check requires CUDA"):
+        _validate_environment(require_cuda=False, require_blackwell=False, require_device_substring="RTX 5090")
+
+
 def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     output = tmp_path / "artifacts" / "flash_backend.json"
     status = "Flash Attention backend selection: selected=fa4, mode=auto"

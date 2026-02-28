@@ -143,7 +143,11 @@ def main() -> None:
         )
         return
 
-    _validate_environment(require_cuda=True, require_blackwell=True)
+    _validate_environment(
+        require_cuda=True,
+        require_blackwell=True,
+        require_device_substring=args.require_device_substring,
+    )
 
     status_line = backend_status_message()
     print(status_line)

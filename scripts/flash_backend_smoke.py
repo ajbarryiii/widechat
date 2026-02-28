@@ -39,6 +39,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--require-cuda", action="store_true", help="fail if CUDA is unavailable")
     parser.add_argument("--require-blackwell", action="store_true", help="fail unless CUDA capability is sm100+")
+    parser.add_argument(
+        "--require-device-substring",
+        default="",
+        help="optional case-insensitive substring required in CUDA device name",
+    )
     return parser.parse_args()
 
 
@@ -49,7 +54,7 @@ def _extract_selected_backend(status_line: str) -> str:
     return match.group(1)
 
 
-def _validate_environment(require_cuda: bool, require_blackwell: bool) -> None:
+def _validate_environment(require_cuda: bool, require_blackwell: bool, require_device_substring: str = "") -> None:
     if require_cuda and not torch.cuda.is_available():
         details = _cuda_unavailable_diagnostics()
         if details:
@@ -61,6 +66,18 @@ def _validate_environment(require_cuda: bool, require_blackwell: bool) -> None:
         major, _minor = torch.cuda.get_device_capability()
         if major < 10:
             raise RuntimeError("Blackwell check failed: CUDA capability must be sm100+")
+    if require_device_substring:
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "device-name check requires CUDA "
+                f"(cannot match required substring {require_device_substring!r})"
+            )
+        device_name = torch.cuda.get_device_name()
+        if require_device_substring.lower() not in device_name.lower():
+            raise RuntimeError(
+                "CUDA device name does not include required substring "
+                f"{require_device_substring!r}: {device_name!r}"
+            )
 
 
 def _cuda_unavailable_diagnostics() -> str:
@@ -158,7 +175,7 @@ def _resolve_output_paths(output_json: str, output_status_line: str, output_dir:
 
 def main() -> None:
     args = _parse_args()
-    _validate_environment(args.require_cuda, args.require_blackwell)
+    _validate_environment(args.require_cuda, args.require_blackwell, args.require_device_substring)
     output_json, output_status_line = _resolve_output_paths(args.output_json, args.output_status_line, args.output_dir)
 
     diagnostics = backend_diagnostics()

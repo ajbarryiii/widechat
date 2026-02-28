@@ -10,7 +10,7 @@ def test_main_writes_validated_artifact_bundle(tmp_path, monkeypatch, capsys):
     output_dir = tmp_path / "blackwell"
     status = "Flash Attention backend selection: selected=fa4, mode=auto"
 
-    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
     monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
@@ -62,7 +62,7 @@ def test_main_optionally_runs_bundle_checker_and_writes_receipt(tmp_path, monkey
         return "fa4"
 
     monkeypatch.setattr(bundle, "run_bundle_check", _fake_run_bundle_check)
-    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
     monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
@@ -97,7 +97,7 @@ def test_main_optionally_runs_bundle_checker_and_writes_receipt(tmp_path, monkey
 
 def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):
     status = "Flash Attention backend selection: selected=sdpa, mode=auto"
-    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
     monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
     monkeypatch.setattr(
         "sys.argv",
@@ -114,12 +114,47 @@ def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):
         bundle.main()
 
 
+def test_main_passes_required_device_substring_to_environment_validation(tmp_path, monkeypatch):
+    output_dir = tmp_path / "blackwell"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    captured = {}
+
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
+        captured["require_cuda"] = require_cuda
+        captured["require_blackwell"] = require_blackwell
+        captured["require_device_substring"] = require_device_substring
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "NVIDIA GeForce RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--require-device-substring",
+            "NVIDIA GeForce RTX 5090",
+        ],
+    )
+
+    bundle.main()
+
+    assert captured == {
+        "require_cuda": True,
+        "require_blackwell": True,
+        "require_device_substring": "NVIDIA GeForce RTX 5090",
+    }
+
+
 def test_main_honors_custom_runbook_path(tmp_path, monkeypatch):
     output_dir = tmp_path / "blackwell"
     runbook_path = tmp_path / "custom" / "runbook.md"
     status = "Flash Attention backend selection: selected=fa4, mode=auto"
 
-    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
     monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
@@ -145,7 +180,7 @@ def test_main_shell_quotes_runbook_commands_for_spaced_paths(tmp_path, monkeypat
     output_dir = tmp_path / "blackwell artifacts"
     status = "Flash Attention backend selection: selected=fa4, mode=auto"
 
-    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
     monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
@@ -175,7 +210,7 @@ def test_main_dry_run_writes_runbook_without_cuda_probe(tmp_path, monkeypatch, c
     output_dir = tmp_path / "blackwell"
     calls = {"validated": False, "status": False}
 
-    def _fake_validate_environment(require_cuda, require_blackwell):
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
         calls["validated"] = True
 
     def _fake_backend_status_message():
@@ -215,7 +250,7 @@ def test_main_dry_run_reports_checker_receipt_when_enabled(tmp_path, monkeypatch
     output_dir = tmp_path / "blackwell"
     calls = {"validated": False, "status": False}
 
-    def _fake_validate_environment(require_cuda, require_blackwell):
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
         calls["validated"] = True
 
     def _fake_backend_status_message():
