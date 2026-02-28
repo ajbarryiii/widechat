@@ -18,7 +18,11 @@ from scripts.validate_blackwell_smoke_artifact import (
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate recorded Blackwell smoke bundle directory")
-    parser.add_argument("--bundle-dir", required=True, help="directory emitted by scripts.run_blackwell_smoke_bundle")
+    parser.add_argument(
+        "--bundle-dir",
+        default="artifacts/blackwell_smoke",
+        help="directory emitted by scripts.run_blackwell_smoke_bundle",
+    )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4")
     parser.add_argument(
         "--require-blackwell",
@@ -29,6 +33,11 @@ def _parse_args() -> argparse.Namespace:
         "--require-git-tracked",
         action="store_true",
         help="require bundle artifacts to be tracked by git (for check-in verification)",
+    )
+    parser.add_argument(
+        "--check-in",
+        action="store_true",
+        help="enable strict check-in mode (requires Blackwell and git-tracked artifacts)",
     )
     return parser.parse_args()
 
@@ -76,7 +85,7 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
         "python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
         f"--output-dir {expected_path}",
         f"--expect-backend {expect_backend}",
-        "--require-blackwell --require-git-tracked",
+        "--check-in",
         f"- `{expected_evidence}`",
         f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
     ]
@@ -87,14 +96,17 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
 
 def main() -> None:
     args = _parse_args()
+    require_blackwell = args.require_blackwell or args.check_in
+    require_git_tracked = args.require_git_tracked or args.check_in
+
     bundle_dir = Path(args.bundle_dir)
     paths = _required_paths(bundle_dir)
     _assert_files_exist(paths)
-    if args.require_git_tracked:
+    if require_git_tracked:
         _assert_git_tracked(paths, bundle_dir)
 
     payload = _load_artifact(str(paths["artifact_json"]))
-    selected_backend, _capability = _validate_artifact(payload, args.expect_backend, args.require_blackwell)
+    selected_backend, _capability = _validate_artifact(payload, args.expect_backend, require_blackwell)
 
     status_line = _load_status_line(str(paths["status_line"]))
     status_backend = _validate_status_line_consistency(payload, status_line)

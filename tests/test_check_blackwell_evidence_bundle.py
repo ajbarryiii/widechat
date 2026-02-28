@@ -6,7 +6,7 @@ import pytest
 from scripts import check_blackwell_evidence_bundle as checker
 
 
-def _write_valid_bundle(bundle_dir):
+def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0)):
     bundle_dir.mkdir(parents=True, exist_ok=True)
     status_line = "Flash Attention backend selection: selected=fa4, mode=auto"
     payload = {
@@ -14,7 +14,7 @@ def _write_valid_bundle(bundle_dir):
         "status_line": status_line,
         "cuda_available": True,
         "device_name": "RTX 5090",
-        "cuda_capability": [10, 0],
+        "cuda_capability": [cuda_capability[0], cuda_capability[1]],
     }
     (bundle_dir / "flash_backend_smoke.json").write_text(json.dumps(payload), encoding="utf-8")
     (bundle_dir / "flash_backend_status.log").write_text(status_line + "\n", encoding="utf-8")
@@ -54,7 +54,7 @@ def _write_valid_bundle(bundle_dir):
                 "## Check-in checklist",
                 "- Ensure command prints `bundle_ok selected=fa4`.",
                 "- Run `python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
-                f" {bundle_dir} --expect-backend fa4 --require-blackwell --require-git-tracked`.",
+                f" {bundle_dir} --expect-backend fa4 --check-in`.",
                 "",
             ]
         ),
@@ -145,4 +145,47 @@ def test_main_require_git_tracked_rejects_untracked_bundle(tmp_path, monkeypatch
     )
 
     with pytest.raises(RuntimeError, match="bundle artifact is not git-tracked"):
+        checker.main()
+
+
+def test_main_check_in_mode_enforces_requirements(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    checker.main()
+
+
+def test_main_check_in_mode_rejects_non_blackwell_bundle(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir, cuda_capability=(9, 0))
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="artifact is not from Blackwell"):
         checker.main()

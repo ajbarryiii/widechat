@@ -151,6 +151,8 @@ Examples:
         - [x] Add offline Blackwell evidence-bundle checker (`python -m scripts.check_blackwell_evidence_bundle --bundle-dir ... --expect-backend fa4`) so checked-in artifacts can be validated for completeness/consistency without requiring GPU access.
         - [x] Add git-tracked bundle validation mode (`--require-git-tracked`) and require the checker command in generated runbooks so check-in reviews can enforce offline evidence verification from committed artifacts.
         - [ ] Run the checker against emitted RTX 5090 artifacts during check-in.
+          - [x] Add strict check-in mode (`--check-in`) in `scripts.check_blackwell_evidence_bundle` and wire the generated runbook command to use it so check-in verification consistently enforces Blackwell capability plus git-tracked artifacts.
+          - [ ] Execute `python -m scripts.check_blackwell_evidence_bundle --bundle-dir ... --expect-backend fa4 --check-in` against emitted RTX 5090 artifacts during check-in.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
