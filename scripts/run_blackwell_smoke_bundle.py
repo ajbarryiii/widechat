@@ -72,6 +72,7 @@ def _write_runbook_markdown(
     output_dir: str,
     expect_backend: str,
     evidence_md: str,
+    check_json_path: str,
     require_device_substring: str,
 ) -> None:
     output_path = Path(path)
@@ -79,7 +80,7 @@ def _write_runbook_markdown(
     quoted_output_dir = shlex.quote(output_dir)
     quoted_expect_backend = shlex.quote(expect_backend)
     quoted_require_device_substring = shlex.quote(require_device_substring)
-    quoted_check_json = shlex.quote(f"{output_dir}/blackwell_bundle_check.json")
+    quoted_check_json = shlex.quote(check_json_path)
     lines = [
         "# Blackwell Smoke Bundle Runbook",
         "",
@@ -106,7 +107,7 @@ def _write_runbook_markdown(
         f" --output-check-json {quoted_check_json} --require-device-substring"
         f" {quoted_require_device_substring}`.",
         "- Verify evidence markdown includes device metadata and `status_line_ok: true`.",
-        f"- Confirm `{output_dir}/blackwell_bundle_check.json` records `selected_backend: {expect_backend}`.",
+        f"- Confirm `{check_json_path}` records `selected_backend: {expect_backend}`.",
         "- Commit the emitted evidence artifacts from this run.",
         "",
     ]
@@ -125,6 +126,7 @@ def main() -> None:
         output_dir=args.output_dir,
         expect_backend=args.expect_backend,
         evidence_md=evidence_md,
+        check_json_path=output_check_json,
         require_device_substring=args.require_device_substring,
     )
 

@@ -335,6 +335,58 @@ def test_main_accepts_shell_quoted_runbook_paths(tmp_path, monkeypatch):
     checker.main()
 
 
+def test_main_accepts_runbook_with_custom_check_receipt_path(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    custom_check_json = tmp_path / "receipts" / "blackwell check.json"
+    quoted_bundle_dir = shlex.quote(str(bundle_dir))
+    quoted_custom_check_json = shlex.quote(str(custom_check_json))
+    (bundle_dir / "blackwell_smoke_runbook.md").write_text(
+        "\n".join(
+            [
+                "# Blackwell Smoke Bundle Runbook",
+                "",
+                "## Command",
+                "```bash",
+                "python -m scripts.run_blackwell_smoke_bundle \\",
+                f"  --output-dir {quoted_bundle_dir} \\",
+                "  --expect-backend fa4 \\",
+                "  --require-device-substring 'RTX 5090'",
+                "```",
+                "",
+                "## Expected outputs",
+                f"- `{bundle_dir}/flash_backend_smoke.json`",
+                f"- `{bundle_dir}/flash_backend_status.log`",
+                f"- `{bundle_dir}/blackwell_smoke_evidence.md`",
+                "",
+                "## Check-in checklist",
+                "- Ensure command prints `bundle_ok selected=fa4`.",
+                "- Run `python -m scripts.run_blackwell_check_in --bundle-dir",
+                f" {quoted_bundle_dir} --expect-backend fa4 --output-check-json",
+                f" {quoted_custom_check_json} --require-device-substring 'RTX 5090'`.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    checker.main()
+
+
 def test_main_check_in_mode_rejects_non_blackwell_bundle(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
     _write_valid_bundle(bundle_dir, cuda_capability=(9, 0))

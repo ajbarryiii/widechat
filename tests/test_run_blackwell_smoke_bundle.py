@@ -95,6 +95,47 @@ def test_main_optionally_runs_bundle_checker_and_writes_receipt(tmp_path, monkey
     assert f"check_json={expected_receipt}" in stdout
 
 
+def test_main_honors_custom_check_receipt_path_in_runbook_and_checker_call(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    custom_receipt = tmp_path / "receipts" / "bundle check.json"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    calls = {}
+
+    def _fake_run_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return "fa4"
+
+    monkeypatch.setattr(bundle, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
+    monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--run-bundle-check",
+            "--output-check-json",
+            str(custom_receipt),
+        ],
+    )
+
+    bundle.main()
+
+    runbook_md = output_dir / "blackwell_smoke_runbook.md"
+    runbook_content = runbook_md.read_text(encoding="utf-8")
+    quoted_custom_receipt = shlex.quote(str(custom_receipt))
+
+    assert calls["output_check_json"] == str(custom_receipt)
+    assert quoted_custom_receipt in runbook_content
+
+    stdout = capsys.readouterr().out
+    assert f"check_json={custom_receipt}" in stdout
+
+
 def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):
     status = "Flash Attention backend selection: selected=sdpa, mode=auto"
     monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)

@@ -261,11 +261,9 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     expected_path = str(bundle_dir)
     quoted_expected_path = shlex.quote(expected_path)
     expected_evidence = str(bundle_dir / "blackwell_smoke_evidence.md")
-    expected_check_json = str(bundle_dir / "blackwell_bundle_check.json")
     quoted_expect_backend = shlex.quote(expect_backend)
     require_device_substring = "RTX 5090"
     quoted_require_device_substring = shlex.quote(require_device_substring)
-    quoted_check_json = shlex.quote(expected_check_json)
     expected_snippets = [
         "# Blackwell Smoke Bundle Runbook",
         "python -m scripts.run_blackwell_smoke_bundle",
@@ -292,9 +290,8 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     if not any(snippet in runbook_text for snippet in expect_backend_snippets):
         raise RuntimeError(f"runbook markdown missing snippet: {expect_backend_snippets[0]}")
 
-    check_json_snippets = [expected_check_json, quoted_check_json]
-    if not any(snippet in runbook_text for snippet in check_json_snippets):
-        raise RuntimeError(f"runbook markdown missing snippet: {expected_check_json}")
+    if "--output-check-json" not in runbook_text:
+        raise RuntimeError("runbook markdown missing snippet: --output-check-json")
 
     require_device_snippets = [
         f"--require-device-substring {require_device_substring}",
