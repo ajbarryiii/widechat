@@ -504,6 +504,29 @@ def test_main_resume_from_artifacts_requires_artifacts_dir(monkeypatch):
         pilot_sweep_script.main()
 
 
+def test_main_output_runbook_requires_artifacts_dir(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--output-runbook-md",
+            "runbook.md",
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--output-runbook-md requires --artifacts-dir"):
+        pilot_sweep_script.main()
+
+
 def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch):
     total_batch_size = 1000
     num_iterations = 100
@@ -577,3 +600,42 @@ def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch)
     assert "`4x3`: `--depth 4 --n-branches 3 --aspect-ratio 192`" in finalists_md_text
     assert "`6x2`: `--depth 6 --n-branches 2 --aspect-ratio 128`" in finalists_md_text
     assert "`12x1`: `--depth 12 --n-branches 1 --aspect-ratio 64`" not in finalists_md_text
+
+
+def test_main_dry_run_writes_pilot_runbook(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    runbook_path = tmp_path / "pilot_runbook.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1024",
+            "--device-batch-size",
+            "2",
+            "--pilot-tokens",
+            "102400",
+            "--eval-every",
+            "50",
+            "--eval-tokens",
+            "4096",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--output-runbook-md",
+            str(runbook_path),
+            "--extra-arg=--compile",
+            "--dry-run",
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+    runbook = runbook_path.read_text(encoding="utf-8")
+    assert "## Pilot Sweep Runbook" in runbook
+    assert "-m scripts.pilot_sweep" in runbook
+    assert "--resume-from-artifacts" in runbook
+    assert "-m scripts.run_pilot_check_in" in runbook
+    assert f"`{artifacts_dir / 'pilot_ranked_runs.json'}`" in runbook
+    assert f"`{artifacts_dir / 'stage2_finalists.json'}`" in runbook
+    assert "--extra-arg --compile" in runbook

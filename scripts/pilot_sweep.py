@@ -60,6 +60,12 @@ def _parse_args() -> argparse.Namespace:
         help="optional directory for per-config logs/metrics artifacts",
     )
     parser.add_argument(
+        "--output-runbook-md",
+        type=str,
+        default="",
+        help="optional path to write reproducible sweep/resume/check-in command runbook",
+    )
+    parser.add_argument(
         "--resume-from-artifacts",
         action="store_true",
         help="reuse existing per-config artifacts and skip rerunning completed configs",
@@ -168,10 +174,116 @@ def _validate_resume_run_artifact(
         )
 
 
+def _render_pilot_sweep_runbook(
+    *,
+    args: argparse.Namespace,
+    ranked_json_path: str,
+    ranking_md_path: str,
+    finalists_json_path: str,
+    finalists_md_path: str,
+) -> str:
+    base_command = [
+        args.python_exe,
+        "-m",
+        "scripts.pilot_sweep",
+        "--total-batch-size",
+        str(args.total_batch_size),
+        "--device-batch-size",
+        str(args.device_batch_size),
+        "--pilot-tokens",
+        str(args.pilot_tokens),
+        "--eval-every",
+        str(args.eval_every),
+        "--eval-tokens",
+        str(args.eval_tokens),
+        "--max-seq-len",
+        str(args.max_seq_len),
+        "--slowdown-threshold-pct",
+        str(args.slowdown_threshold_pct),
+        "--clear-bpb-gain",
+        str(args.clear_bpb_gain),
+        "--max-finalists",
+        str(args.max_finalists),
+        "--artifacts-dir",
+        args.artifacts_dir,
+        "--output-json",
+        ranked_json_path,
+        "--output-md",
+        ranking_md_path,
+        "--output-finalists-json",
+        finalists_json_path,
+        "--output-finalists-md",
+        finalists_md_path,
+    ]
+    if args.device_type:
+        base_command.extend(["--device-type", args.device_type])
+    for extra_arg in args.extra_arg:
+        base_command.extend(["--extra-arg", extra_arg])
+
+    resume_command = [*base_command, "--resume-from-artifacts"]
+
+    runbook_lines = [
+        "## Pilot Sweep Runbook",
+        "",
+        "### Artifact paths",
+        "",
+        f"- ranked runs JSON: `{ranked_json_path}`",
+        f"- ranking markdown: `{ranking_md_path}`",
+        f"- Stage 2 finalists JSON: `{finalists_json_path}`",
+        f"- Stage 2 finalists markdown: `{finalists_md_path}`",
+        f"- strict check receipt JSON: `{os.path.join(args.artifacts_dir, 'pilot_bundle_check.json')}`",
+        "",
+        "### Commands",
+        "",
+        "1. Initial sweep run:",
+        "",
+        "```bash",
+        shlex.join(base_command),
+        "```",
+        "",
+        "2. Resume interrupted run from existing artifacts:",
+        "",
+        "```bash",
+        shlex.join(resume_command),
+        "```",
+        "",
+        "3. Strict check-in validation on emitted artifacts:",
+        "",
+        "```bash",
+        shlex.join(
+            [
+                args.python_exe,
+                "-m",
+                "scripts.run_pilot_check_in",
+                "--artifacts-dir",
+                args.artifacts_dir,
+                "--ranked-json",
+                os.path.basename(ranked_json_path),
+                "--finalists-json",
+                os.path.basename(finalists_json_path),
+                "--finalists-md",
+                os.path.basename(finalists_md_path),
+                "--output-check-json",
+                os.path.join(args.artifacts_dir, "pilot_bundle_check.json"),
+            ]
+        ),
+        "```",
+        "",
+    ]
+    return "\n".join(runbook_lines)
+
+
 def main() -> None:
     args = _parse_args()
     if args.resume_from_artifacts and not args.artifacts_dir:
         raise ValueError("--resume-from-artifacts requires --artifacts-dir")
+    if args.output_runbook_md and not args.artifacts_dir:
+        raise ValueError("--output-runbook-md requires --artifacts-dir")
+
+    ranked_json_path = args.output_json or os.path.join(args.artifacts_dir, "pilot_ranked_runs.json")
+    ranking_md_path = args.output_md or os.path.join(args.artifacts_dir, "pilot_ranking.md")
+    finalists_json_path = args.output_finalists_json or os.path.join(args.artifacts_dir, "stage2_finalists.json")
+    finalists_md_path = args.output_finalists_md or os.path.join(args.artifacts_dir, "stage2_finalists.md")
 
     runs = []
 
@@ -237,6 +349,16 @@ def main() -> None:
         runs.append(run_result)
 
     if args.dry_run:
+        if args.output_runbook_md:
+            runbook = _render_pilot_sweep_runbook(
+                args=args,
+                ranked_json_path=ranked_json_path,
+                ranking_md_path=ranking_md_path,
+                finalists_json_path=finalists_json_path,
+                finalists_md_path=finalists_md_path,
+            )
+            with open(args.output_runbook_md, "w", encoding="utf-8") as f:
+                f.write(runbook)
         return
 
     ranked = apply_ranking_rule(
@@ -304,6 +426,17 @@ def main() -> None:
         lines.append("")
         with open(args.output_finalists_md, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
+
+    if args.output_runbook_md:
+        runbook = _render_pilot_sweep_runbook(
+            args=args,
+            ranked_json_path=ranked_json_path,
+            ranking_md_path=ranking_md_path,
+            finalists_json_path=finalists_json_path,
+            finalists_md_path=finalists_md_path,
+        )
+        with open(args.output_runbook_md, "w", encoding="utf-8") as f:
+            f.write(runbook)
 
 
 if __name__ == "__main__":

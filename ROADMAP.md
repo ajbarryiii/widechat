@@ -204,11 +204,12 @@ Examples:
    - [x] Add per-config artifact capture (`--artifacts-dir`) so each pilot run saves raw logs and per-config metrics JSON for later audit/ranking.
    - [ ] Execute the full pilot sweep on target GPU(s) and collect per-config logs/artifacts.
       - [x] Add resumable sweep support (`--resume-from-artifacts`) so interrupted long pilot runs can continue from existing per-config JSON artifacts.
-       - [ ] Use resume mode for the real target-GPU sweep and persist final ranking/finalist artifacts.
-           - [x] Add pilot-sweep finalist artifact outputs (`--max-finalists`, `--output-finalists-json`, `--output-finalists-md`) so resumed sweeps can persist promotion-ready evidence in one run.
-           - [x] Add resume-artifact preflight validation for log presence plus required metrics/token-budget consistency, so target-GPU resume runs fail fast on incomplete or stale artifacts.
-           - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
-            - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
+        - [ ] Use resume mode for the real target-GPU sweep and persist final ranking/finalist artifacts.
+            - [x] Add pilot-sweep finalist artifact outputs (`--max-finalists`, `--output-finalists-json`, `--output-finalists-md`) so resumed sweeps can persist promotion-ready evidence in one run.
+            - [x] Add resume-artifact preflight validation for log presence plus required metrics/token-budget consistency, so target-GPU resume runs fail fast on incomplete or stale artifacts.
+            - [x] Add generated pilot sweep runbook output (`--output-runbook-md`) that records canonical initial-run, resume, and strict check-in commands with artifact paths so target-GPU operators can execute/check in reproducibly.
+            - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
+             - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
              - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
                 - [x] Add machine-readable pilot bundle checker receipt output (`--output-check-json`) so check-in reviews can verify the exact checker invocation/result from a committed artifact.
                 - [x] Add single-command strict pilot check-in helper (`python -m scripts.run_pilot_check_in --artifacts-dir ...`) that defaults `--output-check-json` to `<artifacts-dir>/pilot_bundle_check.json` and always enforces checker `--check-in` requirements.
