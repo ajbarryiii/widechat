@@ -41,6 +41,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="reject sample/fixture ranked-run JSON inputs",
     )
+    parser.add_argument(
+        "--output-runbook-md",
+        default="",
+        help="optional markdown path to write a promotion/check-in runbook",
+    )
     return parser.parse_args()
 
 
@@ -88,6 +93,55 @@ def _write_finalists_md(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_runbook_md(
+    *,
+    path: Path,
+    input_json: str,
+    output_dir: str,
+    finalists_json: Path,
+    finalists_md: Path,
+    min_finalists: int,
+    max_finalists: int,
+    require_real_input: bool,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    command_lines = [
+        "python -m scripts.run_stage2_promotion_bundle \\",
+        f"  --input-json {input_json} \\",
+        f"  --output-dir {output_dir} \\",
+        f"  --min-finalists {min_finalists} \\",
+        f"  --max-finalists {max_finalists}",
+    ]
+    if require_real_input:
+        command_lines[-1] += " \\"
+        command_lines.append("  --require-real-input")
+
+    lines = [
+        "# Stage 2 Promotion Bundle Runbook",
+        "",
+        "## Command",
+        "```bash",
+        *command_lines,
+        "```",
+        "",
+        "## Expected outputs",
+        f"- `{finalists_json}`",
+        f"- `{finalists_md}`",
+        "",
+        "## Check-in command",
+        "```bash",
+        "python -m scripts.run_pilot_check_in \\",
+        f"  --artifacts-dir {output_dir} \\",
+        f"  --ranked-json {input_json} \\",
+        f"  --finalists-json {finalists_json} \\",
+        f"  --finalists-md {finalists_md} \\",
+        f"  --output-check-json {Path(output_dir) / 'pilot_bundle_check.json'}",
+        "```",
+        "",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
@@ -120,11 +174,26 @@ def main() -> None:
         finalists_summary=finalists_summary,
         finalists=finalists,
     )
+
+    runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
+    if runbook_md is not None:
+        _write_runbook_md(
+            path=runbook_md,
+            input_json=args.input_json,
+            output_dir=args.output_dir,
+            finalists_json=finalists_json,
+            finalists_md=finalists_md,
+            min_finalists=args.min_finalists,
+            max_finalists=args.max_finalists,
+            require_real_input=args.require_real_input,
+        )
+
     print(
         "bundle_ok "
         f"finalists={len(finalists)} "
         f"json={finalists_json} "
         f"md={finalists_md}"
+        + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
     )
 
 

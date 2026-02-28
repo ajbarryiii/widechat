@@ -178,3 +178,73 @@ def test_main_require_real_input_rejects_sample_fixture(monkeypatch):
 
     with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
         bundle.main()
+
+
+def test_main_writes_runbook_when_requested(tmp_path, monkeypatch, capsys):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "artifacts"
+    runbook_md = tmp_path / "docs" / "stage2_runbook.md"
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            },
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 2,
+                "disqualify_reason": None,
+            },
+        ]
+    }
+    input_json.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+            "--require-real-input",
+            "--output-runbook-md",
+            str(runbook_md),
+        ],
+    )
+
+    bundle.main()
+
+    runbook = runbook_md.read_text(encoding="utf-8")
+    assert "# Stage 2 Promotion Bundle Runbook" in runbook
+    assert "python -m scripts.run_stage2_promotion_bundle" in runbook
+    assert f"--input-json {input_json}" in runbook
+    assert f"--output-dir {output_dir}" in runbook
+    assert "--require-real-input" in runbook
+    assert "python -m scripts.run_pilot_check_in" in runbook
+    assert f"--ranked-json {input_json}" in runbook
+    assert f"--finalists-json {output_dir / 'stage2_finalists.json'}" in runbook
+    assert f"--finalists-md {output_dir / 'stage2_finalists.md'}" in runbook
+    assert f"--output-check-json {output_dir / 'pilot_bundle_check.json'}" in runbook
+
+    stdout = capsys.readouterr().out
+    assert f"runbook_md={runbook_md}" in stdout
