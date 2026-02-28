@@ -7,6 +7,7 @@ python -m scripts.run_blackwell_check_in --bundle-dir artifacts/blackwell_smoke
 import argparse
 import json
 import shlex
+import sys
 from pathlib import Path
 
 from scripts.check_blackwell_evidence_bundle import _resolve_bundle_dir as _resolve_bundle_dir_from_checker
@@ -67,6 +68,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path to write machine-readable preflight receipt JSON (preflight mode only)",
     )
+    parser.add_argument(
+        "--output-blocked-md",
+        default="",
+        help="optional path to write markdown blocker evidence when strict check-in fails",
+    )
     return parser.parse_args()
 
 
@@ -125,6 +131,40 @@ def _write_preflight_receipt(
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _write_blocked_markdown(
+    *,
+    output_path: Path,
+    command: list[str],
+    reason: str,
+    bundle_dir_arg: str,
+    bundle_root_arg: str,
+    expect_backend: str,
+    require_device_substring: str,
+    preflight_mode: bool,
+    dry_run_mode: bool,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Blackwell Strict Check-In Blocked",
+        "",
+        "## Context",
+        f"- command: `{json.dumps(command)}`",
+        f"- bundle_dir_arg: `{bundle_dir_arg}`",
+        f"- bundle_root_arg: `{bundle_root_arg}`",
+        f"- expect_backend: `{expect_backend}`",
+        f"- require_device_substring: `{require_device_substring or '<none>'}`",
+        f"- preflight_mode: `{str(preflight_mode).lower()}`",
+        f"- dry_run_mode: `{str(dry_run_mode).lower()}`",
+        "",
+        "## Blocker",
+        "```text",
+        reason,
+        "```",
+        "",
+    ]
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def _resolved_checker_command(
     *,
     bundle_dir: Path,
@@ -160,128 +200,143 @@ def _write_checker_command(path: str, command: str) -> None:
 
 def main() -> None:
     args = _parse_args()
-    if args.preflight and args.dry_run:
-        raise RuntimeError("--preflight and --dry-run are mutually exclusive")
-    if args.output_preflight_json and not args.preflight:
-        raise RuntimeError("--output-preflight-json requires --preflight")
-
-    bundle_dir: Path | None = None
-    output_check_json = args.output_check_json
-
     try:
-        bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
-        if not output_check_json:
-            output_check_json = str(bundle_dir / "blackwell_bundle_check.json")
-    except RuntimeError as exc:
-        if args.preflight and args.output_preflight_json:
-            _write_preflight_receipt(
-                output_path=Path(args.output_preflight_json),
-                bundle_dir=None,
-                expect_backend=args.expect_backend,
-                output_check_json=output_check_json,
-                require_device_substring=args.require_device_substring,
-                allow_sample_bundle=args.allow_sample_bundle,
-                ok=False,
-                error=str(exc),
-            )
-        raise
+        if args.preflight and args.dry_run:
+            raise RuntimeError("--preflight and --dry-run are mutually exclusive")
+        if args.output_preflight_json and not args.preflight:
+            raise RuntimeError("--output-preflight-json requires --preflight")
 
-    assert bundle_dir is not None
-    output_check_json = output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
-    output_check_md = args.output_check_md
-    resolved_command = _resolved_checker_command(
-        bundle_dir=bundle_dir,
-        expect_backend=args.expect_backend,
-        output_check_json=output_check_json,
-        require_device_substring=args.require_device_substring,
-        allow_sample_bundle=args.allow_sample_bundle,
-    )
+        bundle_dir: Path | None = None
+        output_check_json = args.output_check_json
 
-    if args.output_check_command_sh:
-        _write_checker_command(args.output_check_command_sh, resolved_command)
-
-    if args.preflight:
-        preflight_ok = True
-        preflight_error = ""
         try:
-            run_bundle_preflight(
-                bundle_dir=bundle_dir,
-                require_real_bundle=not args.allow_sample_bundle,
-            )
+            bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
+            if not output_check_json:
+                output_check_json = str(bundle_dir / "blackwell_bundle_check.json")
         except RuntimeError as exc:
-            preflight_ok = False
-            preflight_error = str(exc)
+            if args.preflight and args.output_preflight_json:
+                _write_preflight_receipt(
+                    output_path=Path(args.output_preflight_json),
+                    bundle_dir=None,
+                    expect_backend=args.expect_backend,
+                    output_check_json=output_check_json,
+                    require_device_substring=args.require_device_substring,
+                    allow_sample_bundle=args.allow_sample_bundle,
+                    ok=False,
+                    error=str(exc),
+                )
+            raise
 
-        if args.output_preflight_json:
-            _write_preflight_receipt(
-                output_path=Path(args.output_preflight_json),
-                bundle_dir=bundle_dir,
-                expect_backend=args.expect_backend,
-                output_check_json=output_check_json,
-                require_device_substring=args.require_device_substring,
-                allow_sample_bundle=args.allow_sample_bundle,
-                ok=preflight_ok,
-                error=preflight_error,
-            )
-
-        if not preflight_ok:
-            raise RuntimeError(preflight_error)
-
-        print(
-            "blackwell_check_in_preflight_ok "
-            f"bundle_dir={bundle_dir} "
-            f"require_real_bundle={not args.allow_sample_bundle}"
-            + (f" preflight_json={args.output_preflight_json}" if args.output_preflight_json else "")
-        )
-        return
-
-    if args.dry_run:
-        check_md_suffix = f" check_md={output_check_md}" if output_check_md else ""
-        check_command_suffix = (
-            f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else ""
-        )
-        print(
-            "blackwell_check_in_dry_run_ok "
-            f"bundle_dir={bundle_dir} "
-            f"expect_backend={args.expect_backend} "
-            f"check_json={output_check_json} "
-            f"{check_md_suffix} "
-            f"{check_command_suffix} "
-            f"require_device_substring={args.require_device_substring or '<none>'} "
-            f"allow_sample_bundle={args.allow_sample_bundle}"
-        )
-        return
-
-    selected_backend = run_bundle_check(
-        bundle_dir=bundle_dir,
-        expect_backend=args.expect_backend,
-        check_in=True,
-        require_blackwell=False,
-        require_git_tracked=False,
-        require_real_bundle=not args.allow_sample_bundle,
-        require_device_substring=args.require_device_substring,
-        output_check_json=output_check_json,
-    )
-
-    if output_check_md:
-        _write_check_markdown(
-            output_path=Path(output_check_md),
+        assert bundle_dir is not None
+        output_check_json = output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
+        output_check_md = args.output_check_md
+        resolved_command = _resolved_checker_command(
             bundle_dir=bundle_dir,
             expect_backend=args.expect_backend,
-            selected_backend=selected_backend,
-            check_json=output_check_json,
+            output_check_json=output_check_json,
             require_device_substring=args.require_device_substring,
             allow_sample_bundle=args.allow_sample_bundle,
         )
 
-    print(
-        "blackwell_check_in_ok "
-        f"selected={selected_backend} "
-        f"bundle_dir={bundle_dir} "
-        f"check_json={output_check_json}"
-        + (f" check_md={output_check_md}" if output_check_md else "")
-        + (f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else "")
-    )
+        if args.output_check_command_sh:
+            _write_checker_command(args.output_check_command_sh, resolved_command)
+
+        if args.preflight:
+            preflight_ok = True
+            preflight_error = ""
+            try:
+                run_bundle_preflight(
+                    bundle_dir=bundle_dir,
+                    require_real_bundle=not args.allow_sample_bundle,
+                )
+            except RuntimeError as exc:
+                preflight_ok = False
+                preflight_error = str(exc)
+
+            if args.output_preflight_json:
+                _write_preflight_receipt(
+                    output_path=Path(args.output_preflight_json),
+                    bundle_dir=bundle_dir,
+                    expect_backend=args.expect_backend,
+                    output_check_json=output_check_json,
+                    require_device_substring=args.require_device_substring,
+                    allow_sample_bundle=args.allow_sample_bundle,
+                    ok=preflight_ok,
+                    error=preflight_error,
+                )
+
+            if not preflight_ok:
+                raise RuntimeError(preflight_error)
+
+            print(
+                "blackwell_check_in_preflight_ok "
+                f"bundle_dir={bundle_dir} "
+                f"require_real_bundle={not args.allow_sample_bundle}"
+                + (f" preflight_json={args.output_preflight_json}" if args.output_preflight_json else "")
+            )
+            return
+
+        if args.dry_run:
+            check_md_suffix = f" check_md={output_check_md}" if output_check_md else ""
+            check_command_suffix = (
+                f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else ""
+            )
+            print(
+                "blackwell_check_in_dry_run_ok "
+                f"bundle_dir={bundle_dir} "
+                f"expect_backend={args.expect_backend} "
+                f"check_json={output_check_json} "
+                f"{check_md_suffix} "
+                f"{check_command_suffix} "
+                f"require_device_substring={args.require_device_substring or '<none>'} "
+                f"allow_sample_bundle={args.allow_sample_bundle}"
+            )
+            return
+
+        selected_backend = run_bundle_check(
+            bundle_dir=bundle_dir,
+            expect_backend=args.expect_backend,
+            check_in=True,
+            require_blackwell=False,
+            require_git_tracked=False,
+            require_real_bundle=not args.allow_sample_bundle,
+            require_device_substring=args.require_device_substring,
+            output_check_json=output_check_json,
+        )
+
+        if output_check_md:
+            _write_check_markdown(
+                output_path=Path(output_check_md),
+                bundle_dir=bundle_dir,
+                expect_backend=args.expect_backend,
+                selected_backend=selected_backend,
+                check_json=output_check_json,
+                require_device_substring=args.require_device_substring,
+                allow_sample_bundle=args.allow_sample_bundle,
+            )
+
+        print(
+            "blackwell_check_in_ok "
+            f"selected={selected_backend} "
+            f"bundle_dir={bundle_dir} "
+            f"check_json={output_check_json}"
+            + (f" check_md={output_check_md}" if output_check_md else "")
+            + (f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else "")
+        )
+    except RuntimeError:
+        if args.output_blocked_md:
+            _write_blocked_markdown(
+                output_path=Path(args.output_blocked_md),
+                command=[*sys.argv],
+                reason=str(sys.exc_info()[1]),
+                bundle_dir_arg=args.bundle_dir,
+                bundle_root_arg=args.bundle_root,
+                expect_backend=args.expect_backend,
+                require_device_substring=args.require_device_substring,
+                preflight_mode=args.preflight,
+                dry_run_mode=args.dry_run,
+            )
+        raise
 
 
 if __name__ == "__main__":

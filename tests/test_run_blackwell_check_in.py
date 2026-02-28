@@ -376,6 +376,38 @@ def test_main_preflight_writes_blocked_receipt_on_preflight_failure(tmp_path, mo
     assert payload["bundle_dir"] == str(bundle_dir)
 
 
+def test_main_preflight_writes_blocked_markdown_on_preflight_failure(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    blocked_md = tmp_path / "receipts" / "blackwell_check_in_blocked.md"
+
+    def _fake_run_bundle_preflight(**_kwargs):
+        raise RuntimeError("missing required bundle files")
+
+    monkeypatch.setattr(runner, "run_bundle_preflight", _fake_run_bundle_preflight)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="missing required bundle files"):
+        runner.main()
+
+    markdown = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Strict Check-In Blocked" in markdown
+    assert "## Context" in markdown
+    assert f"- bundle_dir_arg: `{bundle_dir}`" in markdown
+    assert "- preflight_mode: `true`" in markdown
+    assert "## Blocker" in markdown
+    assert "missing required bundle files" in markdown
+
+
 def test_main_preflight_writes_blocked_receipt_on_auto_discovery_failure(tmp_path, monkeypatch):
     bundle_root = tmp_path / "artifacts" / "blackwell"
     preflight_json = tmp_path / "receipts" / "preflight.json"
@@ -402,6 +434,34 @@ def test_main_preflight_writes_blocked_receipt_on_auto_discovery_failure(tmp_pat
     assert payload["ok"] is False
     assert payload["bundle_dir"] == ""
     assert "bundle_root does not exist" in payload["error"]
+
+
+def test_main_auto_discovery_failure_writes_blocked_markdown(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    blocked_md = tmp_path / "receipts" / "blackwell_check_in_blocked.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="bundle_root does not exist"):
+        runner.main()
+
+    markdown = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Strict Check-In Blocked" in markdown
+    assert "- bundle_dir_arg: `auto`" in markdown
+    assert f"- bundle_root_arg: `{bundle_root}`" in markdown
+    assert "- preflight_mode: `false`" in markdown
+    assert "bundle_root does not exist" in markdown
 
 
 def test_main_rejects_preflight_dry_run_combination(tmp_path, monkeypatch):
