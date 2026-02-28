@@ -169,7 +169,7 @@ Examples:
 
 ### Stage 0: Correctness bring-up
 - [x] Run only `12x1` and `6x2` for short checks.
-- [ ] Exit criteria: all tests pass, no instability.
+- [x] Exit criteria: all tests pass, no instability.
 
 ### Stage 1: Short pilot sweep (all configs)
 - [ ] Run each config for a short pilot budget (recommended: 250M tokens each).
