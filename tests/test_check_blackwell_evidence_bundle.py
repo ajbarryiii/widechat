@@ -2,6 +2,7 @@ import json
 import os
 import shlex
 import subprocess
+import hashlib
 
 import pytest
 
@@ -63,6 +64,10 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0)):
         ),
         encoding="utf-8",
     )
+
+
+def _sha256(path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_main_accepts_valid_bundle(tmp_path, monkeypatch, capsys):
@@ -347,6 +352,12 @@ def test_main_writes_machine_readable_check_report(tmp_path, monkeypatch):
     assert payload["require_blackwell"] is True
     assert payload["require_git_tracked"] is True
     assert payload["require_real_bundle"] is False
+    assert payload["artifact_sha256"] == {
+        "artifact_json": _sha256(bundle_dir / "flash_backend_smoke.json"),
+        "status_line": _sha256(bundle_dir / "flash_backend_status.log"),
+        "evidence_md": _sha256(bundle_dir / "blackwell_smoke_evidence.md"),
+        "runbook_md": _sha256(bundle_dir / "blackwell_smoke_runbook.md"),
+    }
 
 
 def test_main_check_report_includes_require_real_bundle(tmp_path, monkeypatch):

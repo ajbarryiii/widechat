@@ -5,6 +5,7 @@ python -m scripts.check_blackwell_evidence_bundle --bundle-dir artifacts/blackwe
 """
 
 import argparse
+import hashlib
 import json
 import shlex
 import subprocess
@@ -187,10 +188,19 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
         raise RuntimeError("runbook markdown missing snippet: --check-in")
 
 
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def _write_check_report(
     path: str,
     *,
     bundle_dir: Path,
+    paths: dict[str, Path],
     expect_backend: str,
     selected_backend: str,
     check_in: bool,
@@ -208,6 +218,10 @@ def _write_check_report(
         "require_blackwell": require_blackwell,
         "require_git_tracked": require_git_tracked,
         "require_real_bundle": require_real_bundle,
+        "artifact_sha256": {
+            label: _sha256_file(file_path)
+            for label, file_path in paths.items()
+        },
     }
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -250,6 +264,7 @@ def run_bundle_check(
         _write_check_report(
             output_check_json,
             bundle_dir=bundle_dir,
+            paths=paths,
             expect_backend=expect_backend,
             selected_backend=selected_backend,
             check_in=check_in,
