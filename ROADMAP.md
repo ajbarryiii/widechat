@@ -163,7 +163,7 @@ Examples:
 - [ ] Track benchmark metrics.
   - [ ] `train/tok_per_sec`
   - [ ] `train/mfu`
-  - [ ] Peak memory.
+  - [x] Peak memory.
 
 ## Experiment Plan (Two-Stage)
 
