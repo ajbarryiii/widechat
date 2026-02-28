@@ -275,3 +275,13 @@ def compute_training_perf_metrics(total_batch_size, dt, num_flops_per_token, gpu
         "train/mfu": mfu,
         "train/peak_memory_mib": peak_memory_mib,
     }
+
+
+def compute_post_warmup_tok_per_sec(total_batch_size, post_warmup_steps, total_training_time):
+    """Compute average tokens/sec across post-warmup steps.
+
+    Returns None when there is no valid post-warmup window.
+    """
+    if post_warmup_steps <= 0 or total_training_time <= 0:
+        return None
+    return int(total_batch_size * post_warmup_steps / total_training_time)

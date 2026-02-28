@@ -26,7 +26,7 @@ import torch
 
 from nanochat.gpt import GPT, GPTConfig
 from nanochat.dataloader import tokenizing_distributed_data_loader_bos_bestfit, tokenizing_distributed_data_loader_with_state_bos_bestfit
-from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type, get_peak_flops, compute_training_perf_metrics
+from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type, get_peak_flops, compute_training_perf_metrics, compute_post_warmup_tok_per_sec
 from nanochat.tokenizer import get_tokenizer, get_token_bytes
 from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
 from nanochat.loss_eval import evaluate_bpb
@@ -591,6 +591,15 @@ print0(f"Total training time: {total_training_time/60:.2f}m")
 if val_bpb is not None:
     print0(f"Minimum validation bpb: {min_val_bpb:.6f}")
 
+post_warmup_steps = max(step - 10, 0)
+avg_tok_per_sec = compute_post_warmup_tok_per_sec(
+    total_batch_size=total_batch_size,
+    post_warmup_steps=post_warmup_steps,
+    total_training_time=total_training_time,
+)
+if avg_tok_per_sec is not None:
+    print0(f"Average tok/sec (post-warmup): {avg_tok_per_sec:,}")
+
 # Log to report
 from nanochat.report import get_report
 get_report().log(section="Base model training", data=[
@@ -610,6 +619,8 @@ get_report().log(section="Base model training", data=[
         "Minimum validation bpb": min_val_bpb if val_bpb is not None else None,
         "Final validation bpb": val_bpb,
         "CORE metric estimate": results.get("core_metric", None),
+        "Final train/tok_per_sec": tok_per_sec,
+        "Average train/tok_per_sec": avg_tok_per_sec,
         "MFU %": f"{mfu:.2f}%",
         "Total training flops": f"{flops_so_far:e}",
         "Total training time": f"{total_training_time/60:.2f}m",

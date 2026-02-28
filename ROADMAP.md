@@ -161,7 +161,7 @@ Examples:
 - [ ] Throughput benchmark at fixed `N`, `T`, and total batch.
   - [ ] Compare `12x1` vs `2x5` vs `1x10`.
 - [ ] Track benchmark metrics.
-  - [ ] `train/tok_per_sec`
+  - [x] `train/tok_per_sec`
   - [ ] `train/mfu`
   - [x] Peak memory.
 

@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from nanochat.common import compute_training_perf_metrics
+from nanochat.common import compute_post_warmup_tok_per_sec, compute_training_perf_metrics
 
 
 def test_compute_training_perf_metrics_returns_expected_values():
@@ -43,3 +43,29 @@ def test_compute_training_perf_metrics_rejects_non_positive_world_size():
             ddp_world_size=0,
             peak_memory_bytes=0,
         )
+
+
+def test_compute_post_warmup_tok_per_sec_returns_expected_value():
+    avg_tok_per_sec = compute_post_warmup_tok_per_sec(
+        total_batch_size=2048,
+        post_warmup_steps=50,
+        total_training_time=10.0,
+    )
+    assert avg_tok_per_sec == 10240
+
+
+@pytest.mark.parametrize(
+    "post_warmup_steps,total_training_time",
+    [
+        (0, 10.0),
+        (-1, 10.0),
+        (10, 0.0),
+        (10, -1.0),
+    ],
+)
+def test_compute_post_warmup_tok_per_sec_returns_none_without_valid_window(post_warmup_steps, total_training_time):
+    assert compute_post_warmup_tok_per_sec(
+        total_batch_size=2048,
+        post_warmup_steps=post_warmup_steps,
+        total_training_time=total_training_time,
+    ) is None
