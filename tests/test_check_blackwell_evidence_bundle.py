@@ -21,6 +21,9 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0), is_sample=False)
         "cuda_capability": [cuda_capability[0], cuda_capability[1]],
         "generated_at_utc": "2026-02-27T00:00:00Z",
         "git_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nvidia_smi_ok": True,
+        "nvidia_smi": ["NVIDIA GeForce RTX 5090, 570.86.16"],
+        "nvidia_smi_error": None,
     }
     (bundle_dir / "flash_backend_smoke.json").write_text(json.dumps(payload), encoding="utf-8")
     (bundle_dir / "flash_backend_status.log").write_text(status_line + "\n", encoding="utf-8")
@@ -431,6 +434,57 @@ def test_main_check_in_mode_rejects_non_5090_device_name(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="device_name does not include required substring"):
+        checker.main()
+
+
+def test_main_check_in_mode_rejects_missing_nvidia_smi_provenance(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    payload = json.loads((bundle_dir / "flash_backend_smoke.json").read_text(encoding="utf-8"))
+    payload.pop("nvidia_smi_ok")
+    payload.pop("nvidia_smi")
+    (bundle_dir / "flash_backend_smoke.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="nvidia-smi provenance"):
+        checker.main()
+
+
+def test_main_check_in_mode_rejects_nvidia_smi_without_required_device(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    payload = json.loads((bundle_dir / "flash_backend_smoke.json").read_text(encoding="utf-8"))
+    payload["nvidia_smi"] = ["NVIDIA H100, 570.86.16"]
+    (bundle_dir / "flash_backend_smoke.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="nvidia-smi output does not include required substring"):
         checker.main()
 
 

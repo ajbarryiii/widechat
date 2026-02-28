@@ -287,6 +287,28 @@ def _assert_real_bundle_payload(payload: dict[str, object], artifact_path: Path)
         )
 
 
+def _assert_nvidia_smi_provenance(payload: dict[str, object], require_device_substring: str) -> None:
+    nvidia_smi_ok = payload.get("nvidia_smi_ok")
+    if nvidia_smi_ok is not True:
+        raise RuntimeError("artifact missing successful nvidia-smi provenance (nvidia_smi_ok=true required)")
+
+    raw_lines = payload.get("nvidia_smi")
+    if not isinstance(raw_lines, list) or not raw_lines:
+        raise RuntimeError("artifact missing nvidia-smi GPU inventory lines")
+
+    lines: list[str] = []
+    for index, value in enumerate(raw_lines):
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeError(f"artifact nvidia-smi line {index} must be a non-empty string")
+        lines.append(value)
+
+    if require_device_substring and not any(require_device_substring.lower() in line.lower() for line in lines):
+        raise RuntimeError(
+            "artifact nvidia-smi output does not include required substring "
+            f"{require_device_substring!r}: {lines!r}"
+        )
+
+
 def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend: str) -> None:
     expected_path = str(bundle_dir)
     quoted_expected_path = shlex.quote(expected_path)
@@ -405,6 +427,8 @@ def run_bundle_check(
     payload = _load_artifact(str(paths["artifact_json"]))
     if require_real_bundle:
         _assert_real_bundle_payload(payload, paths["artifact_json"])
+    if check_in:
+        _assert_nvidia_smi_provenance(payload, require_device_substring)
     selected_backend, _capability = _validate_artifact(
         payload,
         expect_backend,

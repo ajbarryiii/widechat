@@ -81,22 +81,8 @@ def _validate_environment(require_cuda: bool, require_blackwell: bool, require_d
 
 
 def _cuda_unavailable_diagnostics() -> str:
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-        )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-        return ""
-
-    if result.returncode != 0:
-        return ""
-
-    gpu_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    if not gpu_lines:
+    ok, gpu_lines, _error = _query_nvidia_smi_gpus()
+    if not ok:
         return ""
 
     gpu_summary = "; ".join(gpu_lines)
@@ -105,6 +91,29 @@ def _cuda_unavailable_diagnostics() -> str:
         "This usually means the active PyTorch build lacks CUDA support or is mismatched with the system CUDA driver/runtime."
     )
 
+
+def _query_nvidia_smi_gpus() -> tuple[bool, list[str], str | None]:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
+        return False, [], str(exc)
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        error = stderr or f"nvidia-smi exited with status {result.returncode}"
+        return False, [], error
+
+    gpu_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not gpu_lines:
+        return False, [], "nvidia-smi returned no GPU lines"
+
+    return True, gpu_lines, None
 
 def _device_metadata() -> dict[str, bool | str | list[int] | None]:
     cuda_available = torch.cuda.is_available()
@@ -140,6 +149,7 @@ def _git_commit() -> str | None:
 def _write_smoke_artifact(path: str, status_line: str, selected_backend: str, diagnostics: dict | None = None) -> None:
     metadata = _device_metadata()
     diagnostics = diagnostics or {}
+    nvidia_smi_ok, nvidia_smi_lines, nvidia_smi_error = _query_nvidia_smi_gpus()
     payload = {
         "status_line": status_line,
         "selected_backend": selected_backend,
@@ -151,6 +161,9 @@ def _write_smoke_artifact(path: str, status_line: str, selected_backend: str, di
         "has_fa3": diagnostics.get("has_fa3"),
         "fa4_probe": diagnostics.get("fa4_probe"),
         "fa3_probe": diagnostics.get("fa3_probe"),
+        "nvidia_smi_ok": nvidia_smi_ok,
+        "nvidia_smi": nvidia_smi_lines,
+        "nvidia_smi_error": nvidia_smi_error,
         **metadata,
     }
     output_path = Path(path)

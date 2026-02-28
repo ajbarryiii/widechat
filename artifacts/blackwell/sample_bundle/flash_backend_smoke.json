@@ -4,6 +4,11 @@
   "is_sample": true,
   "generated_at_utc": "2026-02-27T00:00:00Z",
   "git_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "nvidia_smi_ok": true,
+  "nvidia_smi": [
+    "NVIDIA GeForce RTX 5090, 570.86.16"
+  ],
+  "nvidia_smi_error": null,
   "cuda_available": true,
   "device_name": "RTX 5090",
   "cuda_capability": [

@@ -8,7 +8,7 @@
   "require_real_bundle": false,
   "require_device_substring": "RTX 5090",
   "artifact_sha256": {
-    "artifact_json": "4fc60c48f013187674578311479d46b40bf796241f31a4d86c4b333f05a17340",
+    "artifact_json": "71cbe916d23ba4947d11103ed3406852e4389212c8e08598505dc31c2421f0b7",
     "status_line": "ad802a0b46dad5b20a0f3486ca6dd3cca6d0ebc0b06421f2557fd1d3aa32751f",
     "evidence_md": "6715725e7eeb5360e1280a28001c991d6ed72a66d6e808244fbc26cda16fc4eb",
     "runbook_md": "5c66a93ab74e4a4ba13ac09bf5de317848a24e55e8ab9f2cfdf454f961b0e933"

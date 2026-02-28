@@ -116,6 +116,9 @@ def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     assert payload["has_fa3"] is False
     assert payload["fa4_probe"] == "available"
     assert payload["fa3_probe"] == "unsupported_cc_sm100"
+    assert isinstance(payload["nvidia_smi_ok"], bool)
+    assert isinstance(payload["nvidia_smi"], list)
+    assert "nvidia_smi_error" in payload
     assert payload["generated_at_utc"].endswith("Z")
     datetime.strptime(payload["generated_at_utc"], "%Y-%m-%dT%H:%M:%SZ")
     assert "git_commit" in payload

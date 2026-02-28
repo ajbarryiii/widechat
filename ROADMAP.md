@@ -183,6 +183,7 @@ Examples:
                 - [x] Add smoke-artifact provenance fields (`generated_at_utc`, `git_commit`) and enforce them in artifact validation/evidence checks so check-in reviews can verify when and from which repo revision each bundle was produced.
                 - [x] Add strict RTX 5090 device-name guardrails (`--require-device-substring`, default `RTX 5090` for check-in helpers) so strict bundle validation fails fast when artifacts come from non-5090 hardware.
                 - [x] Add markdown check-in evidence output in `scripts.run_blackwell_check_in` (`--output-check-md`) so strict checker runs can emit a review-friendly summary alongside machine-readable checker receipts.
+                - [x] Enforce `nvidia-smi` provenance in strict Blackwell check-in validation (artifact must carry successful GPU inventory lines matching required device substring), with regression coverage, so check-in receipts bind backend selection to auditable on-device inventory evidence.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
