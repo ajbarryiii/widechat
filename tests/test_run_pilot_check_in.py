@@ -24,7 +24,7 @@ def test_main_runs_strict_check_in_with_default_receipt(tmp_path, monkeypatch, c
     assert calls["ranked_json_path"] == artifacts_dir / "pilot_ranked_runs.json"
     assert calls["finalists_json_path"] == artifacts_dir / "stage2_finalists.json"
     assert calls["finalists_md_path"] == artifacts_dir / "stage2_finalists.md"
-    assert calls["require_real_input"] is False
+    assert calls["require_real_input"] is True
     assert calls["require_git_tracked"] is False
     assert calls["check_in"] is True
     assert calls["output_check_json"] == str(artifacts_dir / "pilot_bundle_check.json")
@@ -65,4 +65,29 @@ def test_main_honors_custom_paths(tmp_path, monkeypatch):
     assert calls["ranked_json_path"] == artifacts_dir / "real_ranked.json"
     assert calls["finalists_json_path"] == artifacts_dir / "real_finalists.json"
     assert calls["finalists_md_path"] == artifacts_dir / "real_finalists.md"
+    assert calls["require_real_input"] is True
     assert calls["output_check_json"] == str(receipt_path)
+
+
+def test_main_allow_sample_input_disables_real_input_guard(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "pilot"
+    calls = {}
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return 1
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--allow-sample-input",
+        ],
+    )
+
+    runner.main()
+
+    assert calls["require_real_input"] is False

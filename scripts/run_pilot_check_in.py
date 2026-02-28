@@ -37,6 +37,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path for checker receipt (defaults to <artifacts-dir>/pilot_bundle_check.json)",
     )
+    parser.add_argument(
+        "--allow-sample-input",
+        action="store_true",
+        help="allow sample/fixture ranked-run inputs (for local regression checks)",
+    )
     return parser.parse_args()
 
 
@@ -52,7 +57,7 @@ def main() -> None:
         ranked_json_path=ranked_json,
         finalists_json_path=finalists_json,
         finalists_md_path=finalists_md,
-        require_real_input=False,
+        require_real_input=not args.allow_sample_input,
         require_git_tracked=False,
         check_in=True,
         output_check_json=output_check_json,
