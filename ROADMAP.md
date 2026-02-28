@@ -177,7 +177,7 @@ Examples:
   - [ ] Execute the full pilot sweep on target GPU(s) and collect per-config logs/artifacts.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [ ] Apply ranking rule.
-  - [ ] Disqualify unstable runs.
+  - [x] Disqualify unstable runs.
   - [ ] Disqualify runs >5% slower than baseline unless loss is clearly better.
   - [x] Rank remaining by val bpb at equal token budget.
 

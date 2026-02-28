@@ -120,7 +120,18 @@ def extract_val_bpb_trace(output_text: str) -> list[float]:
 
 
 def summarize_pilot_output(output_text: str) -> dict[str, int | float | bool | None]:
-    throughput_metrics = parse_train_output(output_text)
+    parse_failed = False
+    try:
+        throughput_metrics = parse_train_output(output_text)
+    except ValueError:
+        parse_failed = True
+        throughput_metrics = {
+            "avg_tok_per_sec": None,
+            "final_tok_per_sec": None,
+            "selected_tok_per_sec": 0,
+            "final_mfu": None,
+            "peak_memory_mib": None,
+        }
     val_trace = extract_val_bpb_trace(output_text)
     final_val_bpb = val_trace[-1] if val_trace else None
     min_val_bpb = min(val_trace) if val_trace else None
@@ -130,7 +141,7 @@ def summarize_pilot_output(output_text: str) -> dict[str, int | float | bool | N
         if min_match:
             min_val_bpb = float(min_match[-1])
 
-    unstable = bool(re.search(r"\b(?:nan|inf)\b", output_text, flags=re.IGNORECASE))
+    unstable = parse_failed or bool(re.search(r"\b(?:nan|inf)\b", output_text, flags=re.IGNORECASE))
     return {
         **throughput_metrics,
         "final_val_bpb": final_val_bpb,
@@ -142,10 +153,15 @@ def summarize_pilot_output(output_text: str) -> dict[str, int | float | bool | N
 def run_single_pilot(command: list[str]) -> tuple[str, dict[str, int | float | bool | None]]:
     proc = subprocess.run(command, check=False, capture_output=True, text=True)
     output = proc.stdout + proc.stderr
+    metrics = summarize_pilot_output(output)
     if proc.returncode != 0:
-        tail = "\n".join(output.splitlines()[-60:])
-        raise RuntimeError(f"Pilot command failed ({proc.returncode}): {' '.join(command)}\n{tail}")
-    return output, summarize_pilot_output(output)
+        metrics["unstable"] = True
+        metrics["command_failed"] = True
+        metrics["failure_returncode"] = proc.returncode
+    else:
+        metrics["command_failed"] = False
+        metrics["failure_returncode"] = None
+    return output, metrics
 
 
 def apply_ranking_rule(
@@ -155,6 +171,8 @@ def apply_ranking_rule(
 ) -> list[dict[str, int | float | bool | str | None]]:
     baseline = next(run for run in runs if run["config"] == "12x1")
     baseline_tok = _as_float(baseline.get("selected_tok_per_sec"), "selected_tok_per_sec")
+    if baseline_tok <= 0:
+        raise ValueError("baseline selected_tok_per_sec must be > 0")
     baseline_bpb = _as_optional_float(baseline.get("min_val_bpb"))
 
     ranked: list[dict[str, int | float | bool | str | None]] = []

@@ -69,6 +69,8 @@ def main() -> None:
 
         _, metrics = run_single_pilot(command)
         run_result.update(metrics)
+        if metrics.get("command_failed"):
+            print(f"warning: pilot run {target.label} exited non-zero and was marked unstable")
         runs.append(run_result)
 
     if args.dry_run:

@@ -1,5 +1,7 @@
 import pytest
+from types import SimpleNamespace
 
+from nanochat import pilot_sweep
 from nanochat.pilot_sweep import (
     MAX_RECOMMENDED_EVAL_EVERY,
     MIN_RECOMMENDED_EVAL_EVERY,
@@ -111,6 +113,28 @@ Step 00075 | Validation bpb: 4.001234
     assert summary["unstable"] is False
 
 
+def test_summarize_pilot_output_marks_parse_failures_unstable():
+    output = "Step 00075 | Validation bpb: 4.001234\n"
+    summary = summarize_pilot_output(output)
+    assert summary["selected_tok_per_sec"] == 0
+    assert summary["min_val_bpb"] == 4.001234
+    assert summary["unstable"] is True
+
+
+def test_run_single_pilot_marks_nonzero_returncode_unstable(monkeypatch):
+    def fake_run(_command, check, capture_output, text):
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        return SimpleNamespace(returncode=1, stdout="", stderr="fatal: oops")
+
+    monkeypatch.setattr(pilot_sweep.subprocess, "run", fake_run)
+    _output, metrics = pilot_sweep.run_single_pilot(["python", "-m", "scripts.base_train"])
+    assert metrics["command_failed"] is True
+    assert metrics["failure_returncode"] == 1
+    assert metrics["unstable"] is True
+
+
 def test_apply_ranking_rule_disqualifies_slow_without_clear_gain():
     ranked = apply_ranking_rule(
         [
@@ -200,6 +224,28 @@ def test_apply_ranking_rule_disqualifies_mismatched_token_budget():
     row = next(item for item in ranked if item["config"] == "4x3")
     assert row["qualified"] is False
     assert row["disqualify_reason"] == "token-budget-mismatch"
+
+
+def test_apply_ranking_rule_requires_positive_baseline_throughput():
+    with pytest.raises(ValueError, match="baseline selected_tok_per_sec must be > 0"):
+        apply_ranking_rule(
+            [
+                {
+                    "config": "12x1",
+                    "selected_tok_per_sec": 0,
+                    "min_val_bpb": 4.10,
+                    "token_budget": 250_000_000,
+                    "unstable": True,
+                },
+                {
+                    "config": "6x2",
+                    "selected_tok_per_sec": 900,
+                    "min_val_bpb": 4.00,
+                    "token_budget": 250_000_000,
+                    "unstable": False,
+                },
+            ]
+        )
 
 
 def test_format_ranking_table_emits_markdown_rows():
