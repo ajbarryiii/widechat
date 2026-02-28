@@ -68,6 +68,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional checker receipt path (defaults to <output-dir>/pilot_bundle_check.json when --run-check-in is set)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only resolve inputs/outputs and print planned bundle execution",
+    )
     return parser.parse_args()
 
 
@@ -212,6 +217,24 @@ def main() -> None:
     args = _parse_args()
     input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
+    runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
+    check_json_path: Path | None = None
+    if args.run_check_in:
+        check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
+
+    if args.dry_run:
+        print(
+            "stage2_promotion_bundle_dry_run_ok "
+            f"input_json={input_json} "
+            f"json={finalists_json} "
+            f"md={finalists_md} "
+            f"run_check_in={args.run_check_in} "
+            f"require_real_input={args.require_real_input}"
+            + (f" check_json={check_json_path}" if check_json_path is not None else "")
+            + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
+        )
+        return
+
     ranked_runs, source_sha256 = _load_ranked_runs_with_source_hash(
         str(input_json),
         require_real_input=args.require_real_input,
@@ -246,10 +269,7 @@ def main() -> None:
         finalists=finalists,
     )
 
-    runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
-    check_json_path: Path | None = None
     if args.run_check_in:
-        check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
         run_pilot_bundle_check(
             ranked_json_path=input_json,
             finalists_json_path=finalists_json,

@@ -361,6 +361,57 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
     assert f"check_json={output_check_json}" in stdout
 
 
+def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, monkeypatch, capsys):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "artifacts"
+    runbook_md = tmp_path / "docs" / "stage2_runbook.md"
+    output_check_json = tmp_path / "receipts" / "stage2_check.json"
+    input_json.write_text("{}", encoding="utf-8")
+
+    check_called = False
+
+    def _fake_run_pilot_bundle_check(**_kwargs):
+        nonlocal check_called
+        check_called = True
+        return 2
+
+    monkeypatch.setattr(bundle, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--run-check-in",
+            "--output-check-json",
+            str(output_check_json),
+            "--output-runbook-md",
+            str(runbook_md),
+            "--require-real-input",
+            "--dry-run",
+        ],
+    )
+
+    bundle.main()
+
+    assert not check_called
+    assert not (output_dir / "stage2_finalists.json").exists()
+    assert not (output_dir / "stage2_finalists.md").exists()
+    assert not runbook_md.exists()
+
+    stdout = capsys.readouterr().out
+    assert "stage2_promotion_bundle_dry_run_ok" in stdout
+    assert f"input_json={input_json}" in stdout
+    assert f"json={output_dir / 'stage2_finalists.json'}" in stdout
+    assert f"md={output_dir / 'stage2_finalists.md'}" in stdout
+    assert "run_check_in=True" in stdout
+    assert "require_real_input=True" in stdout
+    assert f"check_json={output_check_json}" in stdout
+    assert f"runbook_md={runbook_md}" in stdout
+
+
 def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
     runbook_md = tmp_path / "stage2_runbook.md"
     check_json = tmp_path / "checks" / "bundle.json"
