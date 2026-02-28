@@ -500,6 +500,24 @@ def test_main_rejects_output_preflight_json_without_preflight(tmp_path, monkeypa
         runner.main()
 
 
+def test_main_rejects_output_discovery_json_without_auto_bundle_dir(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--output-discovery-json",
+            str(tmp_path / "discovery.json"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="requires --bundle-dir=auto"):
+        runner.main()
+
+
 def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.chdir(repo_root)
@@ -588,6 +606,70 @@ def test_main_auto_rejects_when_only_sample_bundle_exists(tmp_path, monkeypatch)
 
     with pytest.raises(RuntimeError, match="no real Blackwell bundle found"):
         runner.main()
+
+
+def test_main_auto_failure_writes_discovery_receipt(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    discovery_json = tmp_path / "receipts" / "discovery.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--output-discovery-json",
+            str(discovery_json),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="bundle_root does not exist"):
+        runner.main()
+
+    payload = json.loads(discovery_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["resolved_bundle_dir"] == ""
+    assert payload["bundle_root"] == str(bundle_root)
+    assert "bundle_root does not exist" in payload["error"]
+
+
+def test_main_auto_success_writes_discovery_receipt(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    real_bundle = bundle_root / "real_bundle"
+    sample_bundle = bundle_root / "sample_bundle"
+    discovery_json = tmp_path / "receipts" / "discovery.json"
+    _write_bundle_files(real_bundle)
+    _write_bundle_files(sample_bundle)
+
+    os.utime(real_bundle / "flash_backend_smoke.json", (200, 200))
+    os.utime(sample_bundle / "flash_backend_smoke.json", (300, 300))
+
+    def _fake_run_bundle_check(**_kwargs):
+        return "fa4"
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--output-discovery-json",
+            str(discovery_json),
+        ],
+    )
+
+    runner.main()
+
+    payload = json.loads(discovery_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["resolved_bundle_dir"] == str(real_bundle)
+    assert payload["error"] == ""
+    assert any(entry["path"].endswith("sample_bundle") for entry in payload["rejected_candidates"])
 
 
 def test_main_auto_rejects_payload_marked_sample_bundle(tmp_path, monkeypatch):

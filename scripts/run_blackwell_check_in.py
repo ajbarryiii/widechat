@@ -10,7 +10,10 @@ import shlex
 import sys
 from pathlib import Path
 
+from scripts.check_blackwell_evidence_bundle import _discover_bundle_candidates
 from scripts.check_blackwell_evidence_bundle import _resolve_bundle_dir as _resolve_bundle_dir_from_checker
+from scripts.check_blackwell_evidence_bundle import _resolve_bundle_dir_with_diagnostics
+from scripts.check_blackwell_evidence_bundle import _write_discovery_report
 from scripts.check_blackwell_evidence_bundle import run_bundle_check
 from scripts.check_blackwell_evidence_bundle import run_bundle_preflight
 
@@ -72,6 +75,14 @@ def _parse_args() -> argparse.Namespace:
         "--output-blocked-md",
         default="",
         help="optional path to write markdown blocker evidence when strict check-in fails",
+    )
+    parser.add_argument(
+        "--output-discovery-json",
+        default="",
+        help=(
+            "optional path for machine-readable auto-discovery diagnostics "
+            "(--bundle-dir=auto only)"
+        ),
     )
     return parser.parse_args()
 
@@ -205,15 +216,40 @@ def main() -> None:
             raise RuntimeError("--preflight and --dry-run are mutually exclusive")
         if args.output_preflight_json and not args.preflight:
             raise RuntimeError("--output-preflight-json requires --preflight")
+        if args.output_discovery_json and args.bundle_dir != "auto":
+            raise RuntimeError("--output-discovery-json requires --bundle-dir=auto")
 
         bundle_dir: Path | None = None
         output_check_json = args.output_check_json
 
         try:
-            bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
+            if args.bundle_dir == "auto":
+                bundle_root = Path(args.bundle_root)
+                bundle_dir, rejected_dirs = _resolve_bundle_dir_with_diagnostics(args.bundle_dir, args.bundle_root)
+                if args.output_discovery_json:
+                    _write_discovery_report(
+                        args.output_discovery_json,
+                        bundle_root=bundle_root,
+                        ok=True,
+                        resolved_bundle_dir=bundle_dir,
+                        rejected_dirs=rejected_dirs,
+                        error="",
+                    )
+            else:
+                bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
             if not output_check_json:
                 output_check_json = str(bundle_dir / "blackwell_bundle_check.json")
         except RuntimeError as exc:
+            if args.output_discovery_json and args.bundle_dir == "auto":
+                bundle_root = Path(args.bundle_root)
+                _write_discovery_report(
+                    args.output_discovery_json,
+                    bundle_root=bundle_root,
+                    ok=False,
+                    resolved_bundle_dir=None,
+                    rejected_dirs=_discover_bundle_candidates(bundle_root)[1] if bundle_root.is_dir() else [],
+                    error=str(exc),
+                )
             if args.preflight and args.output_preflight_json:
                 _write_preflight_receipt(
                     output_path=Path(args.output_preflight_json),
