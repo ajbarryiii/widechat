@@ -6,6 +6,7 @@ python -m scripts.pilot_promote --input-json artifacts/pilot_ranked.json --outpu
 
 import argparse
 import json
+from pathlib import Path
 
 from nanochat.pilot_sweep import format_finalists_summary, select_finalists
 
@@ -17,12 +18,29 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-finalists", type=int, default=3, help="max number of qualified finalists to keep")
     parser.add_argument("--output-json", type=str, default="", help="optional path to write selected finalists JSON")
     parser.add_argument("--output-md", type=str, default="", help="optional path to write selected finalists markdown")
+    parser.add_argument(
+        "--require-real-input",
+        action="store_true",
+        help="reject sample/fixture ranked-run JSON inputs",
+    )
     return parser.parse_args()
 
 
-def _load_ranked_runs(path: str) -> list[dict[str, int | float | bool | str | None]]:
+def _is_sample_input_path(path: str) -> bool:
+    name = Path(path).name.lower()
+    return name.startswith("sample")
+
+
+def _load_ranked_runs(
+    path: str,
+    *,
+    require_real_input: bool = False,
+) -> list[dict[str, int | float | bool | str | None]]:
     with open(path, "r", encoding="utf-8") as f:
         payload = json.load(f)
+
+    if require_real_input and (_is_sample_input_path(path) or payload.get("is_sample") is True):
+        raise ValueError("--require-real-input rejects sample/fixture ranked-run artifacts")
 
     ranked_runs = payload.get("ranked_runs")
     if not isinstance(ranked_runs, list):
@@ -167,7 +185,7 @@ def _validate_stage2_finalists(
 
 def main() -> None:
     args = _parse_args()
-    ranked_runs = _load_ranked_runs(args.input_json)
+    ranked_runs = _load_ranked_runs(args.input_json, require_real_input=args.require_real_input)
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
     _validate_stage2_finalists(

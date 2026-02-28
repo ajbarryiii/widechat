@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -154,4 +155,26 @@ def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):
     )
 
     with pytest.raises(ValueError, match="--min-finalists must be <= --max-finalists"):
+        bundle.main()
+
+
+def test_main_require_real_input_rejects_sample_fixture(monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    ranked_runs_json = repo_root / "artifacts" / "pilot" / "sample_ranked_runs.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(ranked_runs_json),
+            "--output-dir",
+            str(repo_root / "artifacts" / "pilot"),
+            "--min-finalists",
+            "1",
+            "--require-real-input",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
         bundle.main()

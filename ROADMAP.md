@@ -218,8 +218,9 @@ Examples:
       - [x] Add ranked-run consistency validation (`qualified`/`rank`/`disqualify_reason` coherence plus throughput/loss/token-budget types) so finalist promotion fails fast on semantically invalid ranking artifacts.
       - [x] Add reproducible local promotion fixture artifacts (`artifacts/pilot/sample_ranked_runs.json` => `sample_stage2_finalists.{json,md}`) plus an end-to-end regression test that verifies checked-in finalists stay in sync with `scripts.pilot_promote` output.
       - [ ] Run promotion helper on real pilot output JSON and record selected finalist configs in repo artifacts.
-        - [x] Add single-command promotion bundle runner (`python -m scripts.run_stage2_promotion_bundle --input-json ... --output-dir artifacts/pilot`) so real ranked outputs can emit canonical Stage 2 finalists JSON/markdown artifacts in one run.
-        - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
+         - [x] Add single-command promotion bundle runner (`python -m scripts.run_stage2_promotion_bundle --input-json ... --output-dir artifacts/pilot`) so real ranked outputs can emit canonical Stage 2 finalists JSON/markdown artifacts in one run.
+         - [x] Add `--require-real-input` guardrails to `scripts.pilot_promote` and `scripts.run_stage2_promotion_bundle` (with regression tests) so check-in commands fail fast when pointed at sample fixture ranked-run JSON.
+         - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
 

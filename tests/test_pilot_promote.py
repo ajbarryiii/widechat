@@ -30,6 +30,63 @@ def test_load_ranked_runs_rejects_non_object_row(tmp_path):
         pilot_promote._load_ranked_runs(str(path))
 
 
+def test_load_ranked_runs_require_real_input_rejects_sample_path(tmp_path):
+    path = tmp_path / "sample_ranked_runs.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ranked_runs": [
+                    {
+                        "config": "12x1",
+                        "depth": 12,
+                        "n_branches": 1,
+                        "aspect_ratio": 64,
+                        "selected_tok_per_sec": 1,
+                        "min_val_bpb": 1.0,
+                        "token_budget": 1,
+                        "qualified": True,
+                        "rank": 1,
+                        "disqualify_reason": None,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
+        pilot_promote._load_ranked_runs(str(path), require_real_input=True)
+
+
+def test_load_ranked_runs_require_real_input_rejects_sample_payload_flag(tmp_path):
+    path = tmp_path / "pilot_ranked_runs.json"
+    path.write_text(
+        json.dumps(
+            {
+                "is_sample": True,
+                "ranked_runs": [
+                    {
+                        "config": "12x1",
+                        "depth": 12,
+                        "n_branches": 1,
+                        "aspect_ratio": 64,
+                        "selected_tok_per_sec": 1,
+                        "min_val_bpb": 1.0,
+                        "token_budget": 1,
+                        "qualified": True,
+                        "rank": 1,
+                        "disqualify_reason": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
+        pilot_promote._load_ranked_runs(str(path), require_real_input=True)
+
+
 def test_load_ranked_runs_rejects_missing_required_fields(tmp_path):
     path = tmp_path / "missing-fields.json"
     path.write_text(
@@ -244,6 +301,24 @@ def test_sample_artifacts_stay_in_sync_with_pilot_promote(tmp_path, monkeypatch)
         expected_finalists_json.read_text(encoding="utf-8")
     )
     assert generated_md.read_text(encoding="utf-8") == expected_finalists_md.read_text(encoding="utf-8")
+
+
+def test_main_require_real_input_rejects_sample_fixture(monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    ranked_runs_json = repo_root / "artifacts" / "pilot" / "sample_ranked_runs.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_promote.py",
+            "--input-json",
+            str(ranked_runs_json),
+            "--require-real-input",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
+        pilot_promote.main()
 
 
 def test_main_rejects_when_not_enough_finalists(tmp_path, monkeypatch):

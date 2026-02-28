@@ -36,6 +36,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional finalists markdown path (defaults to <output-dir>/stage2_finalists.md)",
     )
+    parser.add_argument(
+        "--require-real-input",
+        action="store_true",
+        help="reject sample/fixture ranked-run JSON inputs",
+    )
     return parser.parse_args()
 
 
@@ -86,7 +91,7 @@ def _write_finalists_md(
 def main() -> None:
     args = _parse_args()
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
-    ranked_runs = _load_ranked_runs(args.input_json)
+    ranked_runs = _load_ranked_runs(args.input_json, require_real_input=args.require_real_input)
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
     _validate_stage2_finalists(
