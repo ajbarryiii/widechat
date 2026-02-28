@@ -159,6 +159,7 @@ Examples:
               - [x] Add reproducible local Blackwell evidence fixture bundle (`artifacts/blackwell/sample_bundle/*`) plus regression coverage to keep `scripts.run_blackwell_check_in` receipt output in sync with checked-in artifacts.
               - [x] Add strict real-artifact guardrails to check-in validation (`--require-real-bundle` in checker + default-on in `scripts.run_blackwell_check_in`, with `--allow-sample-bundle` override for fixture regression tests) so check-in commands fail fast when pointed at sample fixture bundles.
               - [x] Add `require_real_bundle` to machine-readable checker receipts (`--output-check-json`) with regression coverage so check-in evidence captures whether strict real-artifact enforcement was active.
+              - [x] Add `--bundle-dir auto` discovery mode in `scripts.run_blackwell_check_in` (with `--bundle-root`) so check-in commands can resolve the latest real emitted bundle and fail fast when only sample fixtures exist.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)

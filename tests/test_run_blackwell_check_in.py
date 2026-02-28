@@ -1,8 +1,22 @@
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from scripts import run_blackwell_check_in as runner
 from scripts import check_blackwell_evidence_bundle as checker
+
+
+def _write_bundle_files(bundle_dir: Path) -> None:
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "flash_backend_smoke.json",
+        "flash_backend_status.log",
+        "blackwell_smoke_evidence.md",
+        "blackwell_smoke_runbook.md",
+    ):
+        (bundle_dir / name).write_text("fixture\n", encoding="utf-8")
 
 
 def test_main_runs_strict_check_in_with_default_receipt(tmp_path, monkeypatch, capsys):
@@ -123,3 +137,60 @@ def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):
     assert json.loads(generated_receipt.read_text(encoding="utf-8")) == json.loads(
         expected_receipt.read_text(encoding="utf-8")
     )
+
+
+def test_main_auto_selects_latest_real_bundle(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    older_bundle = bundle_root / "run_older"
+    latest_bundle = bundle_root / "run_latest"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_bundle_files(older_bundle)
+    _write_bundle_files(latest_bundle)
+    _write_bundle_files(sample_bundle)
+
+    os.utime(older_bundle / "flash_backend_smoke.json", (100, 100))
+    os.utime(latest_bundle / "flash_backend_smoke.json", (200, 200))
+    os.utime(sample_bundle / "flash_backend_smoke.json", (300, 300))
+
+    calls = {}
+
+    def _fake_run_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return "fa4"
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+        ],
+    )
+
+    runner.main()
+
+    assert calls["bundle_dir"] == latest_bundle
+    assert calls["output_check_json"] == str(latest_bundle / "blackwell_bundle_check.json")
+
+
+def test_main_auto_rejects_when_only_sample_bundle_exists(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_bundle_files(sample_bundle)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real Blackwell bundle found"):
+        runner.main()
