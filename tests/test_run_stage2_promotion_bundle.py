@@ -364,13 +364,16 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
 def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
     runbook_md = tmp_path / "stage2_runbook.md"
     check_json = tmp_path / "checks" / "bundle.json"
+    input_json = Path("artifacts/pilot/pilot_ranked_runs.json")
+    finalists_json = Path("artifacts/pilot/stage2_finalists.json")
+    finalists_md = Path("artifacts/pilot/stage2_finalists.md")
 
     bundle._write_runbook_md(
         path=runbook_md,
-        input_json="artifacts/pilot/pilot_ranked_runs.json",
+        input_json=str(input_json),
         output_dir="artifacts/pilot",
-        finalists_json=Path("artifacts/pilot/stage2_finalists.json"),
-        finalists_md=Path("artifacts/pilot/stage2_finalists.md"),
+        finalists_json=finalists_json,
+        finalists_md=finalists_md,
         min_finalists=2,
         max_finalists=3,
         require_real_input=True,
@@ -382,6 +385,9 @@ def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
     assert "--require-real-input" in runbook
     assert "--run-check-in" in runbook
     assert f"--output-check-json {check_json}" in runbook
+    assert f"--ranked-json {input_json.resolve()}" in runbook
+    assert f"--finalists-json {finalists_json.resolve()}" in runbook
+    assert f"--finalists-md {finalists_md.resolve()}" in runbook
 
 
 def test_runbook_shell_quotes_spaced_paths(tmp_path):
@@ -419,3 +425,36 @@ def test_runbook_shell_quotes_spaced_paths(tmp_path):
     assert f"--finalists-json {quoted_finalists_json}" in runbook
     assert f"--finalists-md {quoted_finalists_md}" in runbook
     assert f"--output-check-json {quoted_check_json}" in runbook
+
+
+def test_main_runbook_check_in_command_uses_absolute_ranked_path(tmp_path, monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root)
+
+    output_dir = tmp_path / "artifacts"
+    runbook_md = tmp_path / "stage2_runbook.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            "artifacts/pilot/sample_ranked_runs.json",
+            "--output-dir",
+            str(output_dir),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+            "--output-runbook-md",
+            str(runbook_md),
+        ],
+    )
+
+    bundle.main()
+
+    runbook = runbook_md.read_text(encoding="utf-8")
+    assert "--artifacts-dir" in runbook
+    assert f"--ranked-json {Path('artifacts/pilot/sample_ranked_runs.json').resolve()}" in runbook
+    assert f"--finalists-json {(output_dir / 'stage2_finalists.json').resolve()}" in runbook
+    assert f"--finalists-md {(output_dir / 'stage2_finalists.md').resolve()}" in runbook

@@ -154,8 +154,15 @@ def _write_runbook_md(
     output_check_json: str,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    ranked_json_path = Path(input_json).resolve()
+    finalists_json_path = finalists_json.resolve()
+    finalists_md_path = finalists_md.resolve()
+
     quoted_input_json = shlex.quote(input_json)
     quoted_output_dir = shlex.quote(output_dir)
+    quoted_ranked_json = shlex.quote(str(ranked_json_path))
+    quoted_finalists_json = shlex.quote(str(finalists_json_path))
+    quoted_finalists_md = shlex.quote(str(finalists_md_path))
     check_json_path = output_check_json or str(Path(output_dir) / "pilot_bundle_check.json")
     quoted_check_json = shlex.quote(check_json_path)
     command_lines = [
@@ -173,7 +180,7 @@ def _write_runbook_md(
         command_lines.append("  --run-check-in")
         if output_check_json:
             command_lines[-1] += " \\"
-            command_lines.append(f"  --output-check-json {output_check_json}")
+            command_lines.append(f"  --output-check-json {quoted_check_json}")
 
     lines = [
         "# Stage 2 Promotion Bundle Runbook",
@@ -191,9 +198,9 @@ def _write_runbook_md(
         "```bash",
         "python -m scripts.run_pilot_check_in \\",
         f"  --artifacts-dir {quoted_output_dir} \\",
-        f"  --ranked-json {quoted_input_json} \\",
-        f"  --finalists-json {shlex.quote(str(finalists_json))} \\",
-        f"  --finalists-md {shlex.quote(str(finalists_md))} \\",
+        f"  --ranked-json {quoted_ranked_json} \\",
+        f"  --finalists-json {quoted_finalists_json} \\",
+        f"  --finalists-md {quoted_finalists_md} \\",
         f"  --output-check-json {quoted_check_json}",
         "```",
         "",

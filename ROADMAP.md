@@ -246,6 +246,7 @@ Examples:
              - [x] Add optional strict post-promotion check-in execution (`--run-check-in`, `--output-check-json`) in `scripts.run_stage2_promotion_bundle` so one command can emit finalists artifacts and a check-in receipt for review.
              - [x] Harden generated promotion runbook commands with shell-escaped artifact paths (including strict check-in receipt paths) so target-GPU operators can execute/check in Stage 2 promotion flows from directories containing spaces without manual command edits.
              - [x] Add real-artifact auto-discovery mode to `scripts.run_stage2_promotion_bundle` (`--input-json auto`, `--input-root`, `--input-json-name`) so promotion/check-in operators can resolve the latest non-sample `pilot_ranked_runs.json` bundle without hand-editing paths.
+             - [x] Fix Stage 2 promotion runbook check-in path handling by emitting absolute shell-escaped ranked/finalist paths so strict check-in commands work when `--input-json` is repo-relative or outside `--output-dir`.
              - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
