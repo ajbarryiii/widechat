@@ -138,6 +138,7 @@ Examples:
   - [x] Add automated Blackwell load-failure fallback coverage (sm100 + FA4 load failure => SDPA fallback).
   - [x] Add reproducible backend smoke command (`python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell`) so on-device validation emits a canonical `selected=...` log line.
   - [x] Add machine-readable smoke artifact output (`--output-json`) so one-device validation can persist canonical backend-selection evidence alongside logs.
+  - [x] Add smoke-artifact validation helper (`python -m scripts.validate_blackwell_smoke_artifact --artifact-json ... --expect-backend fa4 --require-blackwell`) and include CUDA device metadata in smoke JSON for auditable evidence checks.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
@@ -158,6 +159,7 @@ Examples:
 - [ ] Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
   - [x] Add backend-selection tests that simulate Blackwell (`sm100`) and assert FA4 is preferred/loaded.
   - [x] Add reusable smoke script + unit tests for backend-status parsing and Blackwell environment gating.
+  - [x] Add artifact-validation tests for recorded smoke JSON (backend expectation + Blackwell capability checks).
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests

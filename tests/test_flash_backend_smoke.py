@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.flash_backend_smoke import _extract_selected_backend, _validate_environment, _write_smoke_artifact
+from scripts.flash_backend_smoke import _device_metadata, _extract_selected_backend, _validate_environment, _write_smoke_artifact
 
 
 def test_extract_selected_backend_parses_known_backends():
@@ -47,7 +47,32 @@ def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     _write_smoke_artifact(str(output), status, "fa4")
 
     payload = json.loads(output.read_text(encoding="utf-8"))
-    assert payload == {
-        "selected_backend": "fa4",
-        "status_line": status,
+    assert payload["selected_backend"] == "fa4"
+    assert payload["status_line"] == status
+    assert isinstance(payload["cuda_available"], bool)
+    assert "device_name" in payload
+    assert "cuda_capability" in payload
+
+
+def test_device_metadata_reports_no_cuda(monkeypatch):
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
+
+    metadata = _device_metadata()
+    assert metadata == {
+        "cuda_available": False,
+        "device_name": None,
+        "cuda_capability": None,
+    }
+
+
+def test_device_metadata_reports_capability_when_cuda_available(monkeypatch):
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+
+    metadata = _device_metadata()
+    assert metadata == {
+        "cuda_available": True,
+        "device_name": "RTX 5090",
+        "cuda_capability": [10, 0],
     }

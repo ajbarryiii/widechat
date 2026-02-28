@@ -47,10 +47,29 @@ def _validate_environment(require_cuda: bool, require_blackwell: bool) -> None:
             raise RuntimeError("Blackwell check failed: CUDA capability must be sm100+")
 
 
+def _device_metadata() -> dict[str, bool | str | list[int] | None]:
+    cuda_available = torch.cuda.is_available()
+    if not cuda_available:
+        return {
+            "cuda_available": False,
+            "device_name": None,
+            "cuda_capability": None,
+        }
+
+    major, minor = torch.cuda.get_device_capability()
+    return {
+        "cuda_available": True,
+        "device_name": torch.cuda.get_device_name(),
+        "cuda_capability": [major, minor],
+    }
+
+
 def _write_smoke_artifact(path: str, status_line: str, selected_backend: str) -> None:
+    metadata = _device_metadata()
     payload = {
         "status_line": status_line,
         "selected_backend": selected_backend,
+        **metadata,
     }
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
