@@ -205,7 +205,8 @@ Examples:
            - [x] Add resume-artifact preflight validation for log presence plus required metrics/token-budget consistency, so target-GPU resume runs fail fast on incomplete or stale artifacts.
            - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
            - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
-           - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
+            - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
+              - [x] Add machine-readable pilot bundle checker receipt output (`--output-check-json`) so check-in reviews can verify the exact checker invocation/result from a committed artifact.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.
    - [x] Disqualify unstable runs.

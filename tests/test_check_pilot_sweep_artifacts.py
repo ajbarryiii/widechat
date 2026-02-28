@@ -100,6 +100,52 @@ def test_main_accepts_valid_artifacts(tmp_path, monkeypatch, capsys):
     assert "pilot_bundle_check_ok finalists=2" in capsys.readouterr().out
 
 
+def test_main_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    receipt_json = tmp_path / "pilot_bundle_check.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--output-check-json",
+            str(receipt_json),
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert f"check_json={receipt_json}" in stdout
+
+    receipt = json.loads(receipt_json.read_text(encoding="utf-8"))
+    assert receipt == {
+        "status": "ok",
+        "command": [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--output-check-json",
+            str(receipt_json),
+        ],
+        "ranked_json": str(ranked_json),
+        "finalists_json": str(finalists_json),
+        "finalists_md": str(finalists_md),
+        "finalists_count": 2,
+        "require_real_input": False,
+        "require_git_tracked": False,
+        "check_in": False,
+    }
+
+
 def test_main_rejects_finalists_mismatch(tmp_path, monkeypatch):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     payload = json.loads(finalists_json.read_text(encoding="utf-8"))

@@ -10,6 +10,7 @@ python -m scripts.check_pilot_sweep_artifacts \
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from nanochat.pilot_sweep import select_finalists
@@ -43,6 +44,11 @@ def _parse_args() -> argparse.Namespace:
         "--check-in",
         action="store_true",
         help="enable strict check-in mode (requires real input + git-tracked artifacts)",
+    )
+    parser.add_argument(
+        "--output-check-json",
+        default="",
+        help="optional path to write machine-readable checker receipt JSON",
     )
     return parser.parse_args()
 
@@ -149,6 +155,32 @@ def _assert_finalists_markdown(
             )
 
 
+def _write_check_receipt(
+    *,
+    path: Path,
+    ranked_json_path: Path,
+    finalists_json_path: Path,
+    finalists_md_path: Path,
+    finalists_count: int,
+    require_real_input: bool,
+    require_git_tracked: bool,
+    check_in: bool,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "status": "ok",
+        "command": [*sys.argv],
+        "ranked_json": str(ranked_json_path),
+        "finalists_json": str(finalists_json_path),
+        "finalists_md": str(finalists_md_path),
+        "finalists_count": finalists_count,
+        "require_real_input": require_real_input,
+        "require_git_tracked": require_git_tracked,
+        "check_in": check_in,
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     require_real_input = args.require_real_input or args.check_in
@@ -180,10 +212,27 @@ def main() -> None:
         expected_finalists=expected_finalists,
     )
 
-    print(
+    if args.output_check_json:
+        _write_check_receipt(
+            path=Path(args.output_check_json),
+            ranked_json_path=paths["ranked_json"],
+            finalists_json_path=paths["finalists_json"],
+            finalists_md_path=paths["finalists_md"],
+            finalists_count=len(expected_finalists),
+            require_real_input=require_real_input,
+            require_git_tracked=require_git_tracked,
+            check_in=args.check_in,
+        )
+
+    status_line = (
         "pilot_bundle_check_ok "
         f"finalists={len(expected_finalists)} "
         f"ranked_json={paths['ranked_json']}"
+    )
+    if args.output_check_json:
+        status_line += f" check_json={args.output_check_json}"
+    print(
+        status_line
     )
 
 
