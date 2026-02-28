@@ -8,8 +8,10 @@ python -m scripts.flash_backend_smoke --output-dir artifacts/blackwell_smoke
 """
 
 import argparse
+from datetime import datetime, timezone
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import torch
@@ -75,12 +77,28 @@ def _device_metadata() -> dict[str, bool | str | list[int] | None]:
     }
 
 
+def _generated_at_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _git_commit() -> str | None:
+    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return None
+    commit = result.stdout.strip().lower()
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        return None
+    return commit
+
+
 def _write_smoke_artifact(path: str, status_line: str, selected_backend: str) -> None:
     metadata = _device_metadata()
     payload = {
         "status_line": status_line,
         "selected_backend": selected_backend,
         "is_sample": False,
+        "generated_at_utc": _generated_at_utc(),
+        "git_commit": _git_commit(),
         **metadata,
     }
     output_path = Path(path)

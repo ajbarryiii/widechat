@@ -133,6 +133,8 @@ def _assert_evidence_content(evidence_text: str, selected_backend: str) -> None:
     required_lines = [
         "# Blackwell Flash Backend Smoke Evidence",
         f"- selected_backend: `{selected_backend}`",
+        "- generated_at_utc: `",
+        "- git_commit: `",
         "- status_line_ok: `true`",
     ]
     for line in required_lines:

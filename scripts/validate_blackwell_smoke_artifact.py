@@ -5,6 +5,7 @@ python -m scripts.validate_blackwell_smoke_artifact --artifact-json artifacts/fl
 """
 
 import argparse
+from datetime import datetime
 import json
 import re
 from pathlib import Path
@@ -53,6 +54,24 @@ def _parse_capability(raw: object) -> tuple[int, int] | None:
     return raw[0], raw[1]
 
 
+def _parse_generated_at_utc(raw: object) -> str:
+    if not isinstance(raw, str):
+        raise ValueError("artifact missing generated_at_utc string")
+    try:
+        datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise ValueError("generated_at_utc must be UTC ISO-8601 format YYYY-MM-DDTHH:MM:SSZ") from exc
+    return raw
+
+
+def _parse_git_commit(raw: object) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or re.fullmatch(r"[0-9a-f]{40}", raw) is None:
+        raise ValueError("git_commit must be a 40-character lowercase hex SHA or null")
+    return raw
+
+
 def _extract_selected_backend(status_line: str) -> str:
     match = re.search(r"selected=(fa4|fa3|sdpa)", status_line)
     if match is None:
@@ -72,6 +91,8 @@ def _validate_artifact(payload: dict[str, object], expect_backend: str, require_
         raise ValueError("artifact missing cuda_available bool")
 
     capability = _parse_capability(payload.get("cuda_capability"))
+    _parse_generated_at_utc(payload.get("generated_at_utc"))
+    _parse_git_commit(payload.get("git_commit"))
     if require_blackwell:
         if not cuda_available:
             raise RuntimeError("artifact does not report CUDA availability")
@@ -129,6 +150,9 @@ def _write_evidence_markdown(
     if device_name is not None and not isinstance(device_name, str):
         raise ValueError("artifact device_name must be string or null")
 
+    generated_at_utc = _parse_generated_at_utc(payload.get("generated_at_utc"))
+    git_commit = _parse_git_commit(payload.get("git_commit"))
+
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -138,6 +162,8 @@ def _write_evidence_markdown(
         f"- cuda_available: `{str(cuda_available).lower()}`",
         f"- cuda_capability: `{_capability_str(capability)}`",
         f"- device_name: `{device_name if device_name is not None else 'none'}`",
+        f"- generated_at_utc: `{generated_at_utc}`",
+        f"- git_commit: `{git_commit if git_commit is not None else 'none'}`",
         f"- status_line_ok: `{str(status_line_ok).lower()}`",
         f"- status_line: `{status_line}`",
         "",

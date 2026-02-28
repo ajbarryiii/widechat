@@ -19,6 +19,8 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0), is_sample=False)
         "cuda_available": True,
         "device_name": "RTX 5090",
         "cuda_capability": [cuda_capability[0], cuda_capability[1]],
+        "generated_at_utc": "2026-02-27T00:00:00Z",
+        "git_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     }
     (bundle_dir / "flash_backend_smoke.json").write_text(json.dumps(payload), encoding="utf-8")
     (bundle_dir / "flash_backend_status.log").write_text(status_line + "\n", encoding="utf-8")
@@ -31,6 +33,8 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0), is_sample=False)
                 "- cuda_available: `true`",
                 "- cuda_capability: `sm100`",
                 "- device_name: `RTX 5090`",
+                "- generated_at_utc: `2026-02-27T00:00:00Z`",
+                "- git_commit: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`",
                 "- status_line_ok: `true`",
                 "- status_line: `Flash Attention backend selection: selected=fa4, mode=auto`",
                 "",

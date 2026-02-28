@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import pytest
 
@@ -61,6 +62,9 @@ def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     assert isinstance(payload["cuda_available"], bool)
     assert "device_name" in payload
     assert "cuda_capability" in payload
+    assert payload["generated_at_utc"].endswith("Z")
+    datetime.strptime(payload["generated_at_utc"], "%Y-%m-%dT%H:%M:%SZ")
+    assert "git_commit" in payload
 
 
 def test_device_metadata_reports_no_cuda(monkeypatch):
@@ -132,4 +136,6 @@ def test_main_output_dir_writes_both_artifacts(tmp_path, monkeypatch):
     payload = json.loads(artifact_json.read_text(encoding="utf-8"))
     assert payload["status_line"] == status
     assert payload["selected_backend"] == "fa4"
+    assert payload["generated_at_utc"].endswith("Z")
+    assert "git_commit" in payload
     assert artifact_status.read_text(encoding="utf-8") == f"{status}\n"
