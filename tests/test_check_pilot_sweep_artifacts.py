@@ -266,6 +266,36 @@ def test_main_check_in_mode_rejects_sample_payload_flag(tmp_path, monkeypatch):
         checker.main()
 
 
+def test_run_bundle_check_allows_sample_input_override_in_check_in_mode(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    payload = json.loads(ranked_json.read_text(encoding="utf-8"))
+    payload["is_sample"] = True
+    ranked_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    finalists_payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    finalists_payload["source"] = str(ranked_json)
+    finalists_json.write_text(json.dumps(finalists_payload), encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+
+    finalists_count = checker.run_pilot_bundle_check(
+        ranked_json_path=ranked_json,
+        finalists_json_path=finalists_json,
+        finalists_md_path=finalists_md,
+        require_real_input=False,
+        require_git_tracked=False,
+        check_in=True,
+        allow_sample_input_in_check_in=True,
+    )
+
+    assert finalists_count == 2
+
+
 def test_main_require_git_tracked_rejects_untracked(tmp_path, monkeypatch):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     monkeypatch.chdir(tmp_path)

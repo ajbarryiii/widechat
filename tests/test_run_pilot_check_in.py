@@ -27,6 +27,7 @@ def test_main_runs_strict_check_in_with_default_receipt(tmp_path, monkeypatch, c
     assert calls["require_real_input"] is True
     assert calls["require_git_tracked"] is False
     assert calls["check_in"] is True
+    assert calls["allow_sample_input_in_check_in"] is False
     assert calls["output_check_json"] == str(artifacts_dir / "pilot_bundle_check.json")
 
     stdout = capsys.readouterr().out
@@ -66,6 +67,7 @@ def test_main_honors_custom_paths(tmp_path, monkeypatch):
     assert calls["finalists_json_path"] == artifacts_dir / "real_finalists.json"
     assert calls["finalists_md_path"] == artifacts_dir / "real_finalists.md"
     assert calls["require_real_input"] is True
+    assert calls["allow_sample_input_in_check_in"] is False
     assert calls["output_check_json"] == str(receipt_path)
 
 
@@ -91,3 +93,4 @@ def test_main_allow_sample_input_disables_real_input_guard(tmp_path, monkeypatch
     runner.main()
 
     assert calls["require_real_input"] is False
+    assert calls["allow_sample_input_in_check_in"] is True

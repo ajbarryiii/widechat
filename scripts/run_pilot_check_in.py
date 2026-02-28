@@ -60,6 +60,7 @@ def main() -> None:
         require_real_input=not args.allow_sample_input,
         require_git_tracked=False,
         check_in=True,
+        allow_sample_input_in_check_in=args.allow_sample_input,
         output_check_json=output_check_json,
     )
 

@@ -189,9 +189,10 @@ def run_pilot_bundle_check(
     require_real_input: bool,
     require_git_tracked: bool,
     check_in: bool,
+    allow_sample_input_in_check_in: bool = False,
     output_check_json: str = "",
 ) -> int:
-    effective_require_real_input = require_real_input or check_in
+    effective_require_real_input = require_real_input or (check_in and not allow_sample_input_in_check_in)
     effective_require_git_tracked = require_git_tracked or check_in
 
     paths = {
