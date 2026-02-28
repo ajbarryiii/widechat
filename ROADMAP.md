@@ -136,6 +136,7 @@ Examples:
 - [x] Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.
 - [ ] Target NVIDIA Blackwell (RTX 5090) as primary path, with SDPA fallback retained.
   - [x] Add automated Blackwell load-failure fallback coverage (sm100 + FA4 load failure => SDPA fallback).
+  - [x] Add reproducible backend smoke command (`python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell`) so on-device validation emits a canonical `selected=...` log line.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
@@ -155,6 +156,7 @@ Examples:
 - [x] Short train smoke on CUDA: compile path works, no graph breaks from branch reshape logic.
 - [ ] Flash backend smoke on Blackwell: verify Flash Attention 4 path is selected (not SDPA fallback).
   - [x] Add backend-selection tests that simulate Blackwell (`sm100`) and assert FA4 is preferred/loaded.
+  - [x] Add reusable smoke script + unit tests for backend-status parsing and Blackwell environment gating.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests
