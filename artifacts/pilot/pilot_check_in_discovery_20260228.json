@@ -1,0 +1,7 @@
+{
+  "artifacts_root": "artifacts/pilot",
+  "ok": false,
+  "resolved_artifacts_dir": "",
+  "rejected_candidates": [],
+  "error": "no real pilot artifact bundle found under artifacts/pilot; run scripts.pilot_sweep on target GPU(s) first\ndiscovery searched for 'pilot_ranked_runs.json' files and rejected 0 candidate bundle(s)"
+}
