@@ -1,4 +1,8 @@
+import pytest
+
 from nanochat.pilot_sweep import (
+    MAX_RECOMMENDED_EVAL_EVERY,
+    MIN_RECOMMENDED_EVAL_EVERY,
     PilotTarget,
     apply_ranking_rule,
     build_pilot_command,
@@ -31,6 +35,56 @@ def test_build_pilot_command_sets_expected_flags_and_iterations():
     assert command[command.index("--eval-every") + 1] == "75"
     assert command[command.index("--eval-tokens") + 1] == "1048576"
     assert command[-2:] == ["--head-dim", "128"]
+
+
+def test_build_pilot_command_rejects_eval_cadence_outside_recommended_range():
+    target = PilotTarget(label="12x1", depth=12, n_branches=1, aspect_ratio=64)
+
+    with pytest.raises(ValueError, match="eval_every must be between"):
+        build_pilot_command(
+            target=target,
+            python_exe="python",
+            max_seq_len=2048,
+            total_batch_size=524288,
+            device_batch_size=16,
+            pilot_tokens=250_000_000,
+            eval_every=MIN_RECOMMENDED_EVAL_EVERY - 1,
+            eval_tokens=1_048_576,
+            device_type="cuda",
+            extra_args=[],
+        )
+
+    with pytest.raises(ValueError, match="eval_every must be between"):
+        build_pilot_command(
+            target=target,
+            python_exe="python",
+            max_seq_len=2048,
+            total_batch_size=524288,
+            device_batch_size=16,
+            pilot_tokens=250_000_000,
+            eval_every=MAX_RECOMMENDED_EVAL_EVERY + 1,
+            eval_tokens=1_048_576,
+            device_type="cuda",
+            extra_args=[],
+        )
+
+
+def test_build_pilot_command_requires_budget_for_at_least_one_eval_point():
+    target = PilotTarget(label="12x1", depth=12, n_branches=1, aspect_ratio=64)
+
+    with pytest.raises(ValueError, match="pilot_tokens budget is too small"):
+        build_pilot_command(
+            target=target,
+            python_exe="python",
+            max_seq_len=2048,
+            total_batch_size=1_000,
+            device_batch_size=16,
+            pilot_tokens=90_000,
+            eval_every=100,
+            eval_tokens=1_048_576,
+            device_type="cuda",
+            extra_args=[],
+        )
 
 
 def test_extract_val_bpb_trace_parses_all_evals():

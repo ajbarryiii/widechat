@@ -23,6 +23,9 @@ DEFAULT_PILOT_TARGETS = (
     PilotTarget(label="1x10", depth=1, n_branches=10, aspect_ratio=768),
 )
 
+MIN_RECOMMENDED_EVAL_EVERY = 50
+MAX_RECOMMENDED_EVAL_EVERY = 100
+
 
 def _as_float(value: int | float | bool | str | None, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -54,10 +57,21 @@ def build_pilot_command(
         raise ValueError("pilot_tokens must be >= total_batch_size")
     if eval_every <= 0:
         raise ValueError("eval_every must be > 0")
+    if eval_every < MIN_RECOMMENDED_EVAL_EVERY or eval_every > MAX_RECOMMENDED_EVAL_EVERY:
+        raise ValueError(
+            "eval_every must be between "
+            f"{MIN_RECOMMENDED_EVAL_EVERY} and {MAX_RECOMMENDED_EVAL_EVERY} "
+            "to keep pilot ranking comparable"
+        )
     if eval_tokens <= 0:
         raise ValueError("eval_tokens must be > 0")
 
     num_iterations = pilot_tokens // total_batch_size
+    if num_iterations < eval_every:
+        raise ValueError(
+            "pilot_tokens budget is too small for eval_every; "
+            "need at least one in-training validation point"
+        )
     command = [
         python_exe,
         "-m",
