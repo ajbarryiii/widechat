@@ -449,3 +449,54 @@ def test_main_auto_rejects_missing_bundle_root(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="bundle_root does not exist"):
         checker.main()
+
+
+def test_main_dry_run_skips_bundle_validation(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    report_path = bundle_dir / "dry_run_report.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+            "--require-real-bundle",
+            "--output-check-json",
+            str(report_path),
+            "--dry-run",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert "bundle_check_dry_run_ok" in stdout
+    assert f"bundle_dir={bundle_dir}" in stdout
+    assert "check_in=True" in stdout
+    assert "require_blackwell=True" in stdout
+    assert "require_git_tracked=True" in stdout
+    assert "require_real_bundle=True" in stdout
+    assert f"output_check_json={report_path}" in stdout
+    assert not report_path.exists()
+
+
+def test_main_dry_run_uses_none_for_empty_report_path(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--dry-run",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert "bundle_check_dry_run_ok" in stdout
+    assert "output_check_json=<none>" in stdout

@@ -64,6 +64,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path for machine-readable bundle-check receipt",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only resolve bundle/check settings and print planned validation",
+    )
     return parser.parse_args()
 
 
@@ -259,6 +264,22 @@ def run_bundle_check(
 def main() -> None:
     args = _parse_args()
     bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
+    effective_require_blackwell = args.require_blackwell or args.check_in
+    effective_require_git_tracked = args.require_git_tracked or args.check_in
+
+    if args.dry_run:
+        print(
+            "bundle_check_dry_run_ok "
+            f"bundle_dir={bundle_dir} "
+            f"expect_backend={args.expect_backend} "
+            f"check_in={args.check_in} "
+            f"require_blackwell={effective_require_blackwell} "
+            f"require_git_tracked={effective_require_git_tracked} "
+            f"require_real_bundle={args.require_real_bundle} "
+            f"output_check_json={args.output_check_json or '<none>'}"
+        )
+        return
+
     selected_backend = run_bundle_check(
         bundle_dir=bundle_dir,
         expect_backend=args.expect_backend,
