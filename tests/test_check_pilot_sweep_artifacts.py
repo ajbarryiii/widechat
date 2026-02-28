@@ -1,0 +1,193 @@
+import json
+import subprocess
+
+import pytest
+
+from scripts import check_pilot_sweep_artifacts as checker
+
+
+def _write_artifacts(base_dir):
+    ranked_json = base_dir / "pilot_ranked_runs.json"
+    finalists_json = base_dir / "stage2_finalists.json"
+    finalists_md = base_dir / "stage2_finalists.md"
+
+    ranked_runs = [
+        {
+            "rank": 1,
+            "config": "4x3",
+            "depth": 4,
+            "n_branches": 3,
+            "aspect_ratio": 192,
+            "selected_tok_per_sec": 1000,
+            "min_val_bpb": 4.0,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+        {
+            "rank": 2,
+            "config": "6x2",
+            "depth": 6,
+            "n_branches": 2,
+            "aspect_ratio": 128,
+            "selected_tok_per_sec": 980,
+            "min_val_bpb": 4.01,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+        {
+            "rank": None,
+            "config": "2x5",
+            "depth": 2,
+            "n_branches": 5,
+            "aspect_ratio": 384,
+            "selected_tok_per_sec": 900,
+            "min_val_bpb": 4.2,
+            "token_budget": 250000000,
+            "qualified": False,
+            "disqualify_reason": "slow>5.0%",
+        },
+    ]
+    ranked_json.write_text(json.dumps({"ranked_runs": ranked_runs}), encoding="utf-8")
+
+    selected_finalists = ranked_runs[:2]
+    finalists_json.write_text(
+        json.dumps(
+            {
+                "source": str(ranked_json),
+                "max_finalists": 2,
+                "selected_finalists": selected_finalists,
+            }
+        ),
+        encoding="utf-8",
+    )
+    finalists_md.write_text(
+        "\n".join(
+            [
+                "## Stage 2 Finalists",
+                "",
+                "Selected finalists:",
+                "",
+                "## Stage 2 depth/branch flags",
+                "",
+                "- `4x3`: `--depth 4 --n-branches 3 --aspect-ratio 192`",
+                "- `6x2`: `--depth 6 --n-branches 2 --aspect-ratio 128`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return ranked_json, finalists_json, finalists_md
+
+
+def test_main_accepts_valid_artifacts(tmp_path, monkeypatch, capsys):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    checker.main()
+    assert "pilot_bundle_check_ok finalists=2" in capsys.readouterr().out
+
+
+def test_main_rejects_finalists_mismatch(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    payload["selected_finalists"] = payload["selected_finalists"][::-1]
+    finalists_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="selected_finalists does not match"):
+        checker.main()
+
+
+def test_main_rejects_markdown_missing_flag_line(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    finalists_md.write_text("## Stage 2 Finalists\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="finalists markdown missing snippet"):
+        checker.main()
+
+
+def test_main_check_in_mode_enforces_real_input(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    sample_ranked = tmp_path / "sample_ranked_runs.json"
+    sample_ranked.write_text(ranked_json.read_text(encoding="utf-8"), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(sample_ranked),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
+        checker.main()
+
+
+def test_main_require_git_tracked_rejects_untracked(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: pathspec did not match")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--require-git-tracked",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="artifact is not git-tracked"):
+        checker.main()
