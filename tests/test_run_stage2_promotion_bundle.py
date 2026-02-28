@@ -225,6 +225,46 @@ def test_resolve_input_json_auto_reports_invalid_json_diagnostics(tmp_path):
     assert "unreadable JSON" in str(exc_info.value)
 
 
+def test_main_writes_blocked_markdown_on_failure(tmp_path, monkeypatch, capsys):
+    artifacts_root = tmp_path / "pilot_artifacts"
+    sample_dir = artifacts_root / "sample_bundle"
+    sample_dir.mkdir(parents=True)
+    (sample_dir / "pilot_ranked_runs.json").write_text(
+        json.dumps({"is_sample": True, "ranked_runs": [{}]}),
+        encoding="utf-8",
+    )
+    blocked_md = tmp_path / "receipts" / "stage2_promotion_blocked.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            "auto",
+            "--input-root",
+            str(artifacts_root),
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real pilot ranking JSON found"):
+        bundle.main()
+
+    blocked = blocked_md.read_text(encoding="utf-8")
+    assert "# Stage 2 Promotion Bundle Blocked" in blocked
+    assert "- status: blocked" in blocked
+    assert "- error_type: `RuntimeError`" in blocked
+    assert "--input-json auto" in blocked
+    assert f"- finalists_json: `{tmp_path / 'artifacts' / 'stage2_finalists.json'}`" in blocked
+
+    stdout = capsys.readouterr().out
+    assert "stage2_promotion_bundle_blocked" in stdout
+    assert f"blocked_md={blocked_md}" in stdout
+
+
 def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):
     input_json = tmp_path / "ranked_runs.json"
     ranked_runs = {
@@ -715,6 +755,7 @@ def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
         run_check_in=True,
         output_check_json=str(check_json),
         output_bundle_json="",
+        output_blocked_md="",
     )
 
     runbook = runbook_md.read_text(encoding="utf-8")
@@ -746,6 +787,7 @@ def test_runbook_shell_quotes_spaced_paths(tmp_path):
         run_check_in=True,
         output_check_json=str(check_json),
         output_bundle_json="",
+        output_blocked_md="",
     )
 
     runbook = runbook_md.read_text(encoding="utf-8")
@@ -785,6 +827,7 @@ def test_runbook_includes_bundle_receipt_when_requested(tmp_path):
         run_check_in=True,
         output_check_json=str(check_json),
         output_bundle_json=str(bundle_json),
+        output_blocked_md="",
     )
 
     runbook = runbook_md.read_text(encoding="utf-8")
