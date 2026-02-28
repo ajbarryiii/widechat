@@ -238,6 +238,35 @@ def test_main_preflight_rejects_missing_required_files(tmp_path, monkeypatch):
         runner.main()
 
 
+def test_main_preflight_writes_blocked_markdown_on_failure(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "pilot"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    blocked_md = tmp_path / "receipts" / "pilot_check_in_blocked.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--preflight",
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match=r"pilot_check_in_preflight failed: missing required file\(s\)"):
+        runner.main()
+
+    markdown = blocked_md.read_text(encoding="utf-8")
+    assert "# Pilot Artifact Strict Check-In Blocked" in markdown
+    assert "## Context" in markdown
+    assert "- preflight_mode: `true`" in markdown
+    assert f"- artifacts_dir_arg: `{artifacts_dir}`" in markdown
+    assert "## Blocker" in markdown
+    assert "pilot_check_in_preflight failed: missing required file(s):" in markdown
+
+
 def test_main_preflight_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
     artifacts_dir = tmp_path / "pilot"
     _write_artifact_files(artifacts_dir)
@@ -379,6 +408,36 @@ def test_main_auto_rejects_when_no_real_artifacts_dir_exists(tmp_path, monkeypat
 
     with pytest.raises(RuntimeError, match="no real pilot artifact bundle found"):
         runner.main()
+
+
+def test_main_auto_rejection_writes_blocked_markdown_when_requested(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    sample_artifacts = artifacts_root / "sample_run"
+    _write_artifact_files(sample_artifacts)
+    blocked_md = tmp_path / "receipts" / "pilot_check_in_blocked.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real pilot artifact bundle found"):
+        runner.main()
+
+    markdown = blocked_md.read_text(encoding="utf-8")
+    assert "# Pilot Artifact Strict Check-In Blocked" in markdown
+    assert "- artifacts_dir_arg: `auto`" in markdown
+    assert f"- artifacts_root_arg: `{artifacts_root}`" in markdown
+    assert "- preflight_mode: `false`" in markdown
+    assert "no real pilot artifact bundle found under" in markdown
 
 
 def test_main_auto_rejection_error_lists_candidate_reasons(tmp_path, monkeypatch):

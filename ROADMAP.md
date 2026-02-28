@@ -263,10 +263,11 @@ Examples:
                       - [x] Expand strict-helper/checker auto-discovery candidate scanning to include runbook-only artifact directories (`*runbook*.md`) so missing ranked/finalists files are surfaced as explicit rejection diagnostics instead of a generic "no bundle found" failure.
                    - [x] Improve auto-discovery failure diagnostics in strict helper to report rejected artifact-bundle candidates (for example sample-path and missing-file reasons), so target-GPU check-in operators can fix bundle issues without trial-and-error.
                    - [x] Add strict-helper dry-run mode (`--dry-run`) that resolves artifact/check-receipt paths and prints a canonical preflight status line without executing checker validation, so target-GPU operators can verify invocation inputs before running check-in.
-                   - [x] Add strict-helper preflight mode (`--preflight`) in `scripts.run_pilot_check_in` so operators can fail fast on missing required artifacts (and optional promotion bundle receipt) before running strict check-in.
-                   - [x] Add machine-readable strict-helper preflight receipt output (`--output-preflight-json`) in `scripts.run_pilot_check_in` so operators can check in auditable preflight diagnostics before strict validation.
-                   - [x] Add optional markdown evidence output in `scripts.run_pilot_check_in` (`--output-check-md`) so strict check-in runs can emit a review-friendly summary alongside machine-readable checker receipts.
-                   - [x] Enforce full default pilot-grid coverage in strict check-in validation (all canonical configs present exactly once with expected depth/branch/aspect tuples) so target-GPU check-in fails fast on partial sweeps before promotion.
+                    - [x] Add strict-helper preflight mode (`--preflight`) in `scripts.run_pilot_check_in` so operators can fail fast on missing required artifacts (and optional promotion bundle receipt) before running strict check-in.
+                    - [x] Add machine-readable strict-helper preflight receipt output (`--output-preflight-json`) in `scripts.run_pilot_check_in` so operators can check in auditable preflight diagnostics before strict validation.
+                    - [x] Add blocked-check-in markdown receipt output (`--output-blocked-md`) in `scripts.run_pilot_check_in` so failed strict check-in attempts can persist review-friendly blocker evidence (including auto-discovery and preflight failures) during target-GPU check-in.
+                    - [x] Add optional markdown evidence output in `scripts.run_pilot_check_in` (`--output-check-md`) so strict check-in runs can emit a review-friendly summary alongside machine-readable checker receipts.
+                    - [x] Enforce full default pilot-grid coverage in strict check-in validation (all canonical configs present exactly once with expected depth/branch/aspect tuples) so target-GPU check-in fails fast on partial sweeps before promotion.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.
    - [x] Disqualify unstable runs.
