@@ -313,7 +313,8 @@ Examples:
                    - [x] Add promotion-bundle preflight validation mode in `scripts.run_stage2_promotion_bundle` (`--preflight`, `--output-preflight-json`) so operators can validate ranked-input/finalist-selection constraints and persist machine-readable readiness evidence before real target-GPU execution.
                    - [x] Add resolved bundle-command artifact output in `scripts.run_stage2_promotion_bundle` (`--output-bundle-command-sh`) so target-GPU operators can persist the exact real execution command (with fully-resolved paths/options) before running promotion/check-in.
                    - [ ] Execute promotion bundle runner on real pilot output JSON with `--output-bundle-json` and check in emitted finalists + receipt artifacts.
-                      - [x] Add blocked-run markdown receipt output (`--output-blocked-md`) in `scripts.run_stage2_promotion_bundle` so failed real-input executions still emit check-in-friendly blocker diagnostics with the exact invocation and planned artifact paths.
+                       - [x] Add blocked-run markdown receipt output (`--output-blocked-md`) in `scripts.run_stage2_promotion_bundle` so failed real-input executions still emit check-in-friendly blocker diagnostics with the exact invocation and planned artifact paths.
+                       - [x] Add machine-readable auto-discovery receipt output (`--output-discovery-json`) in `scripts.run_stage2_promotion_bundle` so `--input-json auto` promotion attempts persist resolved-input/rejection diagnostics for audit on both success and blocked runs.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
 

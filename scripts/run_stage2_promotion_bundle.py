@@ -106,6 +106,11 @@ def _parse_args() -> argparse.Namespace:
         help="optional path to write blocker diagnostics markdown when bundle execution fails",
     )
     parser.add_argument(
+        "--output-discovery-json",
+        default="",
+        help="optional path to write machine-readable input auto-discovery diagnostics",
+    )
+    parser.add_argument(
         "--output-bundle-command-sh",
         default="",
         help="optional path to write the resolved promotion-bundle command",
@@ -158,9 +163,28 @@ def _render_no_real_input_json_error(
     return "\n".join(lines)
 
 
-def _resolve_input_json(input_json_arg: str, input_root_arg: str, input_json_name: str) -> Path:
+def _resolve_input_json(
+    input_json_arg: str,
+    input_root_arg: str,
+    input_json_name: str,
+    discovery_receipt: dict[str, object] | None = None,
+) -> Path:
     if input_json_arg != "auto":
-        return Path(input_json_arg)
+        resolved = Path(input_json_arg)
+        if discovery_receipt is not None:
+            discovery_receipt.update(
+                {
+                    "status": "ok",
+                    "mode": "explicit",
+                    "input_json_arg": input_json_arg,
+                    "input_root": None,
+                    "input_json_name": input_json_name,
+                    "selected_input_json": str(resolved),
+                    "discovered_candidates": [],
+                    "rejected_candidates": [],
+                }
+            )
+        return resolved
 
     input_root = Path(input_root_arg)
     if not input_root.is_dir():
@@ -178,7 +202,33 @@ def _resolve_input_json(input_json_arg: str, input_root_arg: str, input_json_nam
         else:
             rejected_paths.append((path, classification))
 
+    if discovery_receipt is not None:
+        discovery_receipt.update(
+            {
+                "status": "ok",
+                "mode": "auto",
+                "input_json_arg": input_json_arg,
+                "input_root": str(input_root),
+                "input_json_name": input_json_name,
+                "selected_input_json": None,
+                "discovered_candidates": [str(path) for path in discovered_paths],
+                "rejected_candidates": [{"path": str(path), "reason": reason} for path, reason in rejected_paths],
+            }
+        )
+
     if not real_candidates:
+        if discovery_receipt is not None:
+            discovery_receipt.update(
+                {
+                    "status": "blocked",
+                    "error_type": "RuntimeError",
+                    "error": _render_no_real_input_json_error(
+                        input_root=input_root,
+                        input_json_name=input_json_name,
+                        rejected_paths=rejected_paths,
+                    ),
+                }
+            )
         raise RuntimeError(
             _render_no_real_input_json_error(
                 input_root=input_root,
@@ -188,7 +238,15 @@ def _resolve_input_json(input_json_arg: str, input_root_arg: str, input_json_nam
         )
 
     real_candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return real_candidates[0]
+    resolved = real_candidates[0]
+    if discovery_receipt is not None:
+        discovery_receipt["selected_input_json"] = str(resolved)
+    return resolved
+
+
+def _write_discovery_receipt(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _write_finalists_json(
@@ -330,6 +388,7 @@ def _write_blocked_md(
     evidence_md_path: Path | None,
     preflight_json_path: Path | None,
     bundle_command_path: Path | None,
+    discovery_json_path: Path | None,
 ) -> None:
     input_json_value = str(resolved_input_json) if resolved_input_json is not None else input_json_arg
     lines = [
@@ -355,6 +414,11 @@ def _write_blocked_md(
             f"- bundle_command_sh: `{bundle_command_path}`"
             if bundle_command_path is not None
             else "- bundle_command_sh: (not configured)"
+        ),
+        (
+            f"- discovery_json: `{discovery_json_path}`"
+            if discovery_json_path is not None
+            else "- discovery_json: (not configured)"
         ),
         "",
         "## Command",
@@ -455,6 +519,7 @@ def _write_preflight_receipt(
     bundle_json_path: Path | None,
     evidence_md_path: Path | None,
     bundle_command_path: Path | None,
+    discovery_json_path: Path | None,
 ) -> None:
     payload = {
         "status": "ok",
@@ -473,6 +538,7 @@ def _write_preflight_receipt(
         "bundle_json": str(bundle_json_path) if bundle_json_path is not None else None,
         "evidence_md": str(evidence_md_path) if evidence_md_path is not None else None,
         "bundle_command_sh": str(bundle_command_path) if bundle_command_path is not None else None,
+        "discovery_json": str(discovery_json_path) if discovery_json_path is not None else None,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -543,18 +609,27 @@ def main() -> None:
     bundle_json_path = Path(args.output_bundle_json) if args.output_bundle_json else None
     evidence_md_path = Path(args.output_evidence_md) if args.output_evidence_md else None
     blocked_md_path = Path(args.output_blocked_md) if args.output_blocked_md else None
+    discovery_json_path = Path(args.output_discovery_json) if args.output_discovery_json else None
     bundle_command_path = Path(args.output_bundle_command_sh) if args.output_bundle_command_sh else None
     preflight_json_path = Path(args.output_preflight_json) if args.output_preflight_json else None
     check_json_path: Path | None = None
     if args.run_check_in:
         check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
     input_json: Path | None = None
+    discovery_receipt: dict[str, object] = {}
 
     try:
         if args.dry_run and args.preflight:
             raise ValueError("--dry-run and --preflight are mutually exclusive")
 
-        input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
+        input_json = _resolve_input_json(
+            args.input_json,
+            args.input_root,
+            args.input_json_name,
+            discovery_receipt=discovery_receipt,
+        )
+        if discovery_json_path is not None:
+            _write_discovery_receipt(discovery_json_path, discovery_receipt)
 
         resolved_bundle_command = _resolved_bundle_command(
             input_json=input_json,
@@ -603,6 +678,7 @@ def main() -> None:
                     bundle_json_path=bundle_json_path,
                     evidence_md_path=evidence_md_path,
                     bundle_command_path=bundle_command_path,
+                    discovery_json_path=discovery_json_path,
                 )
             print(
                 "stage2_promotion_bundle_preflight_ok "
@@ -617,6 +693,7 @@ def main() -> None:
                 + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
                 + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
                 + (f" bundle_command_sh={bundle_command_path}" if bundle_command_path is not None else "")
+                + (f" discovery_json={discovery_json_path}" if discovery_json_path is not None else "")
                 + (
                     f" preflight_json={args.output_preflight_json}"
                     if args.output_preflight_json
@@ -655,6 +732,7 @@ def main() -> None:
                 + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
                 + (f" blocked_md={blocked_md_path}" if blocked_md_path is not None else "")
                 + (f" bundle_command_sh={bundle_command_path}" if bundle_command_path is not None else "")
+                + (f" discovery_json={discovery_json_path}" if discovery_json_path is not None else "")
             )
             return
 
@@ -756,8 +834,28 @@ def main() -> None:
             + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
             + (f" blocked_md={blocked_md_path}" if blocked_md_path is not None else "")
             + (f" bundle_command_sh={bundle_command_path}" if bundle_command_path is not None else "")
+            + (f" discovery_json={discovery_json_path}" if discovery_json_path is not None else "")
         )
     except Exception as exc:
+        if discovery_json_path is not None and not discovery_receipt:
+            discovery_receipt.update(
+                {
+                    "status": "blocked",
+                    "mode": "unknown",
+                    "input_json_arg": args.input_json,
+                    "input_root": args.input_root,
+                    "input_json_name": args.input_json_name,
+                    "selected_input_json": str(input_json) if input_json is not None else None,
+                    "discovered_candidates": [],
+                    "rejected_candidates": [],
+                }
+            )
+        if discovery_json_path is not None and discovery_receipt.get("status") != "blocked":
+            discovery_receipt["status"] = "blocked"
+            discovery_receipt["error_type"] = type(exc).__name__
+            discovery_receipt["error"] = str(exc)
+        if discovery_json_path is not None:
+            _write_discovery_receipt(discovery_json_path, discovery_receipt)
         if blocked_md_path is not None:
             _write_blocked_md(
                 path=blocked_md_path,
@@ -773,6 +871,7 @@ def main() -> None:
                 evidence_md_path=evidence_md_path,
                 preflight_json_path=preflight_json_path,
                 bundle_command_path=bundle_command_path,
+                discovery_json_path=discovery_json_path,
             )
             print(f"stage2_promotion_bundle_blocked blocked_md={blocked_md_path} error={type(exc).__name__}")
         raise

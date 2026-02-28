@@ -234,6 +234,7 @@ def test_main_writes_blocked_markdown_on_failure(tmp_path, monkeypatch, capsys):
         encoding="utf-8",
     )
     blocked_md = tmp_path / "receipts" / "stage2_promotion_blocked.md"
+    discovery_json = tmp_path / "receipts" / "stage2_promotion_discovery.json"
 
     monkeypatch.setattr(
         "sys.argv",
@@ -247,6 +248,8 @@ def test_main_writes_blocked_markdown_on_failure(tmp_path, monkeypatch, capsys):
             str(tmp_path / "artifacts"),
             "--output-blocked-md",
             str(blocked_md),
+            "--output-discovery-json",
+            str(discovery_json),
         ],
     )
 
@@ -259,10 +262,94 @@ def test_main_writes_blocked_markdown_on_failure(tmp_path, monkeypatch, capsys):
     assert "- error_type: `RuntimeError`" in blocked
     assert "--input-json auto" in blocked
     assert f"- finalists_json: `{tmp_path / 'artifacts' / 'stage2_finalists.json'}`" in blocked
+    assert f"- discovery_json: `{discovery_json}`" in blocked
+
+    discovery = json.loads(discovery_json.read_text(encoding="utf-8"))
+    assert discovery["status"] == "blocked"
+    assert discovery["mode"] == "auto"
+    assert discovery["selected_input_json"] is None
+    assert discovery["rejected_candidates"][0]["reason"] == "sample path segment"
 
     stdout = capsys.readouterr().out
     assert "stage2_promotion_bundle_blocked" in stdout
     assert f"blocked_md={blocked_md}" in stdout
+
+
+def test_main_writes_discovery_receipt_for_auto_resolution_success(tmp_path, monkeypatch, capsys):
+    artifacts_root = tmp_path / "pilot_artifacts"
+    sample_dir = artifacts_root / "sample_bundle"
+    real_dir = artifacts_root / "2026-02-03"
+    sample_dir.mkdir(parents=True)
+    real_dir.mkdir(parents=True)
+
+    (sample_dir / "pilot_ranked_runs.json").write_text(
+        json.dumps({"is_sample": True, "ranked_runs": [{}]}),
+        encoding="utf-8",
+    )
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            },
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 2,
+                "disqualify_reason": None,
+            },
+        ]
+    }
+    real_ranked = real_dir / "pilot_ranked_runs.json"
+    real_ranked.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    output_dir = tmp_path / "artifacts"
+    discovery_json = tmp_path / "receipts" / "stage2_promotion_discovery.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            "auto",
+            "--input-root",
+            str(artifacts_root),
+            "--output-dir",
+            str(output_dir),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+            "--output-discovery-json",
+            str(discovery_json),
+        ],
+    )
+
+    bundle.main()
+
+    discovery = json.loads(discovery_json.read_text(encoding="utf-8"))
+    assert discovery["status"] == "ok"
+    assert discovery["mode"] == "auto"
+    assert discovery["selected_input_json"] == str(real_ranked)
+    assert str(real_ranked) in discovery["discovered_candidates"]
+    assert discovery["rejected_candidates"][0]["reason"] == "sample path segment"
+
+    stdout = capsys.readouterr().out
+    assert "bundle_ok" in stdout
+    assert f"discovery_json={discovery_json}" in stdout
 
 
 def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):
@@ -629,6 +716,7 @@ def test_main_preflight_validates_without_writing_finalists(tmp_path, monkeypatc
     output_bundle_json = tmp_path / "receipts" / "stage2_bundle.json"
     output_evidence_md = tmp_path / "receipts" / "stage2_evidence.md"
     output_preflight_json = tmp_path / "receipts" / "stage2_preflight.json"
+    output_discovery_json = tmp_path / "receipts" / "stage2_discovery.json"
 
     ranked_runs = {
         "ranked_runs": [
@@ -682,6 +770,8 @@ def test_main_preflight_validates_without_writing_finalists(tmp_path, monkeypatc
             "--preflight",
             "--output-preflight-json",
             str(output_preflight_json),
+            "--output-discovery-json",
+            str(output_discovery_json),
         ],
     )
 
@@ -703,6 +793,7 @@ def test_main_preflight_validates_without_writing_finalists(tmp_path, monkeypatc
     assert preflight_payload["check_json"] == str(output_check_json)
     assert preflight_payload["bundle_json"] == str(output_bundle_json)
     assert preflight_payload["evidence_md"] == str(output_evidence_md)
+    assert preflight_payload["discovery_json"] == str(output_discovery_json)
 
     stdout = capsys.readouterr().out
     assert "stage2_promotion_bundle_preflight_ok" in stdout
@@ -712,6 +803,7 @@ def test_main_preflight_validates_without_writing_finalists(tmp_path, monkeypatc
     assert f"check_json={output_check_json}" in stdout
     assert f"bundle_json={output_bundle_json}" in stdout
     assert f"evidence_md={output_evidence_md}" in stdout
+    assert f"discovery_json={output_discovery_json}" in stdout
     assert f"preflight_json={output_preflight_json}" in stdout
 
 
