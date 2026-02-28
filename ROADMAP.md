@@ -274,9 +274,10 @@ Examples:
               - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
                 - [x] Add machine-readable promotion-bundle receipt output (`--output-bundle-json`) in `scripts.run_stage2_promotion_bundle` so real execution/check-in reviews can capture a canonical invocation summary plus SHA256 digests for emitted finalists artifacts.
                 - [ ] Run promotion bundle runner on real pilot output JSON with `--output-bundle-json` and check in emitted finalists + receipt artifacts.
-                  - [x] Add offline checker support for validating Stage 2 promotion bundle receipts (`--bundle-json`) against ranked/finalists artifacts and receipt SHA256 metadata, with regression coverage.
-                  - [x] Add optional dry-run runbook emission in `scripts.run_stage2_promotion_bundle` (`--dry-run-write-runbook`) so target-GPU operators can persist canonical promotion/check-in commands before real execution.
-                  - [ ] Execute promotion bundle runner on real pilot output JSON with `--output-bundle-json` and check in emitted finalists + receipt artifacts.
+                   - [x] Add offline checker support for validating Stage 2 promotion bundle receipts (`--bundle-json`) against ranked/finalists artifacts and receipt SHA256 metadata, with regression coverage.
+                   - [x] Add optional dry-run runbook emission in `scripts.run_stage2_promotion_bundle` (`--dry-run-write-runbook`) so target-GPU operators can persist canonical promotion/check-in commands before real execution.
+                   - [x] Add review-friendly promotion evidence markdown output in `scripts.run_stage2_promotion_bundle` (`--output-evidence-md`) so real Stage 2 promotion/check-in runs can emit a canonical summary alongside finalists and machine-readable receipts.
+                   - [ ] Execute promotion bundle runner on real pilot output JSON with `--output-bundle-json` and check in emitted finalists + receipt artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
 

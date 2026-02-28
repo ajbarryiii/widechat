@@ -85,6 +85,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path to write machine-readable promotion-bundle receipt JSON",
     )
+    parser.add_argument(
+        "--output-evidence-md",
+        default="",
+        help="optional path to write review-friendly promotion evidence markdown",
+    )
     return parser.parse_args()
 
 
@@ -322,12 +327,47 @@ def _write_bundle_receipt(
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _write_bundle_evidence_md(
+    *,
+    path: Path,
+    input_json: Path,
+    finalists_json: Path,
+    finalists_md: Path,
+    finalists_count: int,
+    source_sha256: str,
+    run_check_in: bool,
+    check_json_path: Path | None,
+    bundle_json_path: Path | None,
+) -> None:
+    lines = [
+        "# Stage 2 Promotion Evidence",
+        "",
+        f"- status: ok",
+        f"- input_json: `{input_json}`",
+        f"- finalists_json: `{finalists_json}`",
+        f"- finalists_md: `{finalists_md}`",
+        f"- finalists_count: {finalists_count}",
+        f"- source_sha256: `{source_sha256}`",
+        f"- run_check_in: {str(run_check_in).lower()}",
+        f"- check_json: `{check_json_path}`" if check_json_path is not None else "- check_json: (not generated)",
+        (
+            f"- bundle_json: `{bundle_json_path}`"
+            if bundle_json_path is not None
+            else "- bundle_json: (not generated)"
+        ),
+        "",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
     runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
     bundle_json_path = Path(args.output_bundle_json) if args.output_bundle_json else None
+    evidence_md_path = Path(args.output_evidence_md) if args.output_evidence_md else None
     check_json_path: Path | None = None
     if args.run_check_in:
         check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
@@ -358,6 +398,7 @@ def main() -> None:
             + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
             + (f" runbook_written={runbook_md}" if runbook_md is not None and args.dry_run_write_runbook else "")
             + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+            + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
         )
         return
 
@@ -433,6 +474,19 @@ def main() -> None:
             check_json_path=check_json_path,
         )
 
+    if evidence_md_path is not None:
+        _write_bundle_evidence_md(
+            path=evidence_md_path,
+            input_json=input_json,
+            finalists_json=finalists_json,
+            finalists_md=finalists_md,
+            finalists_count=len(finalists),
+            source_sha256=source_sha256,
+            run_check_in=args.run_check_in,
+            check_json_path=check_json_path,
+            bundle_json_path=bundle_json_path,
+        )
+
     print(
         "bundle_ok "
         f"input_json={input_json} "
@@ -442,6 +496,7 @@ def main() -> None:
         + (f" check_json={check_json_path}" if check_json_path is not None else "")
         + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
         + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+        + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
     )
 
 

@@ -361,6 +361,7 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
     output_dir = tmp_path / "artifacts"
     output_check_json = tmp_path / "receipts" / "stage2_check.json"
     output_bundle_json = tmp_path / "receipts" / "stage2_bundle.json"
+    output_evidence_md = tmp_path / "receipts" / "stage2_evidence.md"
     ranked_runs = {
         "ranked_runs": [
             {
@@ -417,6 +418,8 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
             str(output_check_json),
             "--output-bundle-json",
             str(output_bundle_json),
+            "--output-evidence-md",
+            str(output_evidence_md),
         ],
     )
 
@@ -446,9 +449,20 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
         output_check_json.read_bytes()
     ).hexdigest()
 
+    evidence = output_evidence_md.read_text(encoding="utf-8")
+    assert "# Stage 2 Promotion Evidence" in evidence
+    assert f"- input_json: `{input_json}`" in evidence
+    assert f"- finalists_json: `{output_dir / 'stage2_finalists.json'}`" in evidence
+    assert f"- finalists_md: `{output_dir / 'stage2_finalists.md'}`" in evidence
+    assert "- finalists_count: 2" in evidence
+    assert "- run_check_in: true" in evidence
+    assert f"- check_json: `{output_check_json}`" in evidence
+    assert f"- bundle_json: `{output_bundle_json}`" in evidence
+
     stdout = capsys.readouterr().out
     assert f"check_json={output_check_json}" in stdout
     assert f"bundle_json={output_bundle_json}" in stdout
+    assert f"evidence_md={output_evidence_md}" in stdout
 
 
 def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, monkeypatch, capsys):
@@ -457,6 +471,7 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     runbook_md = tmp_path / "docs" / "stage2_runbook.md"
     output_check_json = tmp_path / "receipts" / "stage2_check.json"
     output_bundle_json = tmp_path / "receipts" / "stage2_bundle.json"
+    output_evidence_md = tmp_path / "receipts" / "stage2_evidence.md"
     input_json.write_text("{}", encoding="utf-8")
 
     check_called = False
@@ -482,6 +497,8 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
             str(runbook_md),
             "--output-bundle-json",
             str(output_bundle_json),
+            "--output-evidence-md",
+            str(output_evidence_md),
             "--require-real-input",
             "--dry-run",
         ],
@@ -494,6 +511,7 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     assert not (output_dir / "stage2_finalists.md").exists()
     assert not runbook_md.exists()
     assert not output_bundle_json.exists()
+    assert not output_evidence_md.exists()
 
     stdout = capsys.readouterr().out
     assert "stage2_promotion_bundle_dry_run_ok" in stdout
@@ -505,6 +523,7 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     assert f"check_json={output_check_json}" in stdout
     assert f"runbook_md={runbook_md}" in stdout
     assert f"bundle_json={output_bundle_json}" in stdout
+    assert f"evidence_md={output_evidence_md}" in stdout
 
 
 def test_main_dry_run_can_write_runbook_when_enabled(tmp_path, monkeypatch, capsys):
