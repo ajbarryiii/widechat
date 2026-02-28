@@ -80,6 +80,42 @@ def test_main_honors_custom_receipt_path(tmp_path, monkeypatch):
     assert calls["require_device_substring"] == "RTX 5090"
 
 
+def test_main_writes_markdown_check_evidence(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+    check_json = tmp_path / "receipts" / "check.json"
+    check_md = tmp_path / "receipts" / "check.md"
+
+    def _fake_run_bundle_check(**_kwargs):
+        return "fa4"
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--output-check-json",
+            str(check_json),
+            "--output-check-md",
+            str(check_md),
+        ],
+    )
+
+    runner.main()
+
+    md_text = check_md.read_text(encoding="utf-8")
+    assert "# Blackwell Strict Check-In Evidence" in md_text
+    assert "- selected_backend: `fa4`" in md_text
+    assert f"- bundle_dir: `{bundle_dir}`" in md_text
+    assert f"- check_json: `{check_json}`" in md_text
+    assert "- require_real_bundle: `true`" in md_text
+    assert "- require_device_substring: `RTX 5090`" in md_text
+
+    stdout = capsys.readouterr().out
+    assert f"check_md={check_md}" in stdout
+
+
 def test_main_allows_sample_bundle_when_requested(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "artifacts" / "blackwell" / "sample_bundle"
     calls = {}
@@ -131,6 +167,33 @@ def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, caps
     assert f"bundle_dir={bundle_dir}" in stdout
     assert f"check_json={bundle_dir / 'blackwell_bundle_check.json'}" in stdout
     assert "require_device_substring=RTX 5090" in stdout
+
+
+def test_main_dry_run_includes_markdown_output_path(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+    check_md = tmp_path / "receipts" / "check.md"
+
+    def _fake_run_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--dry-run",
+            "--output-check-md",
+            str(check_md),
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert "blackwell_check_in_dry_run_ok" in stdout
+    assert f"check_md={check_md}" in stdout
 
 
 def test_main_preflight_runs_preflight_and_skips_checker(tmp_path, monkeypatch, capsys):
