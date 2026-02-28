@@ -176,10 +176,10 @@ Examples:
   - [x] Add pilot sweep automation script (`scripts/pilot_sweep.py`) that runs the full config grid with fixed pilot token budget and eval cadence.
   - [ ] Execute the full pilot sweep on target GPU(s) and collect per-config logs/artifacts.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
-- [ ] Apply ranking rule.
-  - [x] Disqualify unstable runs.
-  - [ ] Disqualify runs >5% slower than baseline unless loss is clearly better.
-  - [x] Rank remaining by val bpb at equal token budget.
+- [x] Apply ranking rule.
+   - [x] Disqualify unstable runs.
+   - [x] Disqualify runs >5% slower than baseline unless loss is clearly better.
+   - [x] Rank remaining by val bpb at equal token budget.
 
 ### Stage 2: Long runs (top candidates only)
 - [ ] Promote top 2-3 configs from pilots.
