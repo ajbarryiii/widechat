@@ -319,3 +319,105 @@ def test_main_dry_run_reports_checker_receipt_when_enabled(tmp_path, monkeypatch
     stdout = capsys.readouterr().out
     assert "run_bundle_check=True" in stdout
     assert f"check_json={output_dir / 'blackwell_bundle_check.json'}" in stdout
+
+
+def test_main_preflight_writes_ready_receipt_without_backend_probe(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    calls = {"validated": False, "status": False}
+
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
+        calls["validated"] = True
+
+    def _fake_backend_status_message():
+        calls["status"] = True
+        return "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--preflight",
+        ],
+    )
+
+    bundle.main()
+
+    assert calls["validated"] is True
+    assert calls["status"] is False
+    assert (output_dir / "blackwell_smoke_runbook.md").is_file()
+    assert not (output_dir / "flash_backend_smoke.json").exists()
+    assert not (output_dir / "flash_backend_status.log").exists()
+    assert not (output_dir / "blackwell_smoke_evidence.md").exists()
+
+    receipt_path = output_dir / "blackwell_smoke_preflight.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["mode"] == "preflight"
+    assert receipt["ready"] is True
+    assert receipt["error"] == ""
+    assert receipt["check_json"] is None
+
+    stdout = capsys.readouterr().out
+    assert "bundle_preflight_ok" in stdout
+    assert f"preflight_json={receipt_path}" in stdout
+
+
+def test_main_preflight_writes_blocked_receipt_and_raises(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    reason = "CUDA is required but not available"
+    calls = {"status": False}
+
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
+        raise RuntimeError(reason)
+
+    def _fake_backend_status_message():
+        calls["status"] = True
+        return "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--preflight",
+            "--run-bundle-check",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Blackwell smoke preflight failed"):
+        bundle.main()
+
+    assert calls["status"] is False
+
+    receipt_path = output_dir / "blackwell_smoke_preflight.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["mode"] == "preflight"
+    assert receipt["ready"] is False
+    assert reason in receipt["error"]
+    assert receipt["check_json"] == str(output_dir / "blackwell_bundle_check.json")
+
+    stdout = capsys.readouterr().out
+    assert "bundle_preflight_blocked" in stdout
+    assert f"preflight_json={receipt_path}" in stdout
+
+
+def test_main_rejects_preflight_with_dry_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(tmp_path / "blackwell"),
+            "--preflight",
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--dry-run cannot be combined with --preflight"):
+        bundle.main()

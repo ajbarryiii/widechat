@@ -153,6 +153,7 @@ Examples:
       - [ ] Execute the documented runbook flow on target RTX 5090 and check in emitted evidence artifacts.
         - [x] Harden generated runbook commands with shell-escaped paths so RTX 5090 operators can execute/check in artifact flows from directories containing spaces without manual command edits.
         - [x] Add `--dry-run` mode in `scripts.run_blackwell_smoke_bundle` so operators can emit/check runbook + canonical artifact paths before RTX 5090 execution without requiring CUDA.
+        - [x] Add smoke-bundle environment preflight receipts (`--preflight`, `--output-preflight-json`) in `scripts.run_blackwell_smoke_bundle` so operators can capture auditable blocker diagnostics before RTX 5090 execution.
         - [x] Add offline Blackwell evidence-bundle checker (`python -m scripts.check_blackwell_evidence_bundle --bundle-dir ... --expect-backend fa4`) so checked-in artifacts can be validated for completeness/consistency without requiring GPU access.
         - [x] Add git-tracked bundle validation mode (`--require-git-tracked`) and require the checker command in generated runbooks so check-in reviews can enforce offline evidence verification from committed artifacts.
         - [ ] Run the checker against emitted RTX 5090 artifacts during check-in.
