@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 import pytest
 
@@ -52,6 +53,8 @@ def _write_valid_bundle(bundle_dir):
                 "",
                 "## Check-in checklist",
                 "- Ensure command prints `bundle_ok selected=fa4`.",
+                "- Run `python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
+                f" {bundle_dir} --expect-backend fa4 --require-blackwell --require-git-tracked`.",
                 "",
             ]
         ),
@@ -99,4 +102,47 @@ def test_main_rejects_evidence_markdown_drift(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["check_blackwell_evidence_bundle.py", "--bundle-dir", str(bundle_dir)])
 
     with pytest.raises(RuntimeError, match="evidence markdown missing line"):
+        checker.main()
+
+
+def test_main_require_git_tracked_accepts_tracked_bundle(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--require-git-tracked",
+        ],
+    )
+
+    checker.main()
+
+
+def test_main_require_git_tracked_rejects_untracked_bundle(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: pathspec did not match")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--require-git-tracked",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="bundle artifact is not git-tracked"):
         checker.main()

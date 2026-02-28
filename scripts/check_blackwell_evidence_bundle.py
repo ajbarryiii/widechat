@@ -5,6 +5,7 @@ python -m scripts.check_blackwell_evidence_bundle --bundle-dir artifacts/blackwe
 """
 
 import argparse
+import subprocess
 from pathlib import Path
 
 from scripts.validate_blackwell_smoke_artifact import (
@@ -24,6 +25,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="require artifact CUDA capability to be sm100+",
     )
+    parser.add_argument(
+        "--require-git-tracked",
+        action="store_true",
+        help="require bundle artifacts to be tracked by git (for check-in verification)",
+    )
     return parser.parse_args()
 
 
@@ -40,6 +46,14 @@ def _assert_files_exist(paths: dict[str, Path]) -> None:
     for label, path in paths.items():
         if not path.is_file():
             raise RuntimeError(f"missing {label} file: {path}")
+
+
+def _assert_git_tracked(paths: dict[str, Path], bundle_dir: Path) -> None:
+    for path in paths.values():
+        cmd = ["git", "-C", str(bundle_dir), "ls-files", "--error-unmatch", path.name]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"bundle artifact is not git-tracked: {path}")
 
 
 def _assert_evidence_content(evidence_text: str, selected_backend: str) -> None:
@@ -59,8 +73,10 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     expected_snippets = [
         "# Blackwell Smoke Bundle Runbook",
         "python -m scripts.run_blackwell_smoke_bundle",
+        "python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
         f"--output-dir {expected_path}",
         f"--expect-backend {expect_backend}",
+        "--require-blackwell --require-git-tracked",
         f"- `{expected_evidence}`",
         f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
     ]
@@ -74,6 +90,8 @@ def main() -> None:
     bundle_dir = Path(args.bundle_dir)
     paths = _required_paths(bundle_dir)
     _assert_files_exist(paths)
+    if args.require_git_tracked:
+        _assert_git_tracked(paths, bundle_dir)
 
     payload = _load_artifact(str(paths["artifact_json"]))
     selected_backend, _capability = _validate_artifact(payload, args.expect_backend, args.require_blackwell)
