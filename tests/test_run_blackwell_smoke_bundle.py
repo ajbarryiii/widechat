@@ -121,3 +121,40 @@ def test_main_shell_quotes_runbook_commands_for_spaced_paths(tmp_path, monkeypat
 
     assert f"--output-dir {quoted_output_dir}" in runbook_content
     assert quoted_check_json in runbook_content
+
+
+def test_main_dry_run_writes_runbook_without_cuda_probe(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    calls = {"validated": False, "status": False}
+
+    def _fake_validate_environment(require_cuda, require_blackwell):
+        calls["validated"] = True
+
+    def _fake_backend_status_message():
+        calls["status"] = True
+        return "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--dry-run",
+        ],
+    )
+
+    bundle.main()
+
+    assert calls["validated"] is False
+    assert calls["status"] is False
+    assert (output_dir / "blackwell_smoke_runbook.md").is_file()
+    assert not (output_dir / "flash_backend_smoke.json").exists()
+    assert not (output_dir / "flash_backend_status.log").exists()
+    assert not (output_dir / "blackwell_smoke_evidence.md").exists()
+
+    stdout = capsys.readouterr().out
+    assert "bundle_dry_run_ok" in stdout
+    assert f"artifact_json={output_dir / 'flash_backend_smoke.json'}" in stdout

@@ -43,6 +43,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional markdown path for a check-in runbook (defaults to <output-dir>/blackwell_smoke_runbook.md)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only emit runbook/planned paths without probing CUDA or writing smoke artifacts",
+    )
     return parser.parse_args()
 
 
@@ -82,8 +87,6 @@ def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evi
 
 def main() -> None:
     args = _parse_args()
-    _validate_environment(require_cuda=True, require_blackwell=True)
-
     artifact_json, status_line_path = _resolve_output_paths("", "", args.output_dir)
     evidence_md = args.output_evidence_md or str(Path(args.output_dir) / "blackwell_smoke_evidence.md")
     runbook_md = args.output_runbook_md or str(Path(args.output_dir) / "blackwell_smoke_runbook.md")
@@ -94,6 +97,19 @@ def main() -> None:
         expect_backend=args.expect_backend,
         evidence_md=evidence_md,
     )
+
+    if args.dry_run:
+        print(
+            "bundle_dry_run_ok "
+            f"expect_backend={args.expect_backend} "
+            f"artifact_json={artifact_json} "
+            f"status_line={status_line_path} "
+            f"evidence_md={evidence_md} "
+            f"runbook_md={runbook_md}"
+        )
+        return
+
+    _validate_environment(require_cuda=True, require_blackwell=True)
 
     status_line = backend_status_message()
     print(status_line)
