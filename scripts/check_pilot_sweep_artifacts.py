@@ -72,6 +72,14 @@ def _parse_args() -> argparse.Namespace:
         help="optional path to write machine-readable checker receipt JSON",
     )
     parser.add_argument(
+        "--bundle-json",
+        default="",
+        help=(
+            "optional stage2 promotion bundle receipt JSON path from "
+            "scripts.run_stage2_promotion_bundle --output-bundle-json"
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="only resolve artifact paths and print planned checker settings",
@@ -247,6 +255,99 @@ def _load_finalists_payload(path: Path) -> dict[str, object]:
     return payload
 
 
+def _load_bundle_receipt_payload(path: Path) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"bundle receipt JSON must be an object: {path}")
+    return payload
+
+
+def _assert_bundle_receipt(
+    *,
+    bundle_json_path: Path,
+    bundle_payload: dict[str, object],
+    ranked_json_path: Path,
+    finalists_json_path: Path,
+    finalists_md_path: Path,
+    ranked_source_sha256: str,
+    finalists_count: int,
+    check_in: bool,
+) -> None:
+    status = bundle_payload.get("status")
+    if status != "ok":
+        raise RuntimeError(f"bundle receipt status must be 'ok': {bundle_json_path}")
+
+    run_check_in = bundle_payload.get("run_check_in")
+    if not isinstance(run_check_in, bool):
+        raise RuntimeError(f"bundle receipt run_check_in must be boolean: {bundle_json_path}")
+    if check_in and not run_check_in:
+        raise RuntimeError(f"bundle receipt must record run_check_in=true in check-in mode: {bundle_json_path}")
+
+    source_sha256 = bundle_payload.get("source_sha256")
+    if source_sha256 != ranked_source_sha256:
+        raise RuntimeError(
+            "bundle receipt source_sha256 does not match --ranked-json contents: "
+            f"bundle={source_sha256} ranked_sha256={ranked_source_sha256}"
+        )
+
+    expected_paths = {
+        "input_json": ranked_json_path,
+        "finalists_json": finalists_json_path,
+        "finalists_md": finalists_md_path,
+    }
+    for key, expected_path in expected_paths.items():
+        value = bundle_payload.get(key)
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"bundle receipt missing non-empty {key}: {bundle_json_path}")
+        if Path(value).resolve() != expected_path.resolve():
+            raise RuntimeError(
+                f"bundle receipt {key} does not match supplied artifacts: "
+                f"bundle={value} expected={expected_path}"
+            )
+
+    receipt_finalists_count = bundle_payload.get("finalists_count")
+    if isinstance(receipt_finalists_count, bool) or not isinstance(receipt_finalists_count, int):
+        raise RuntimeError(f"bundle receipt finalists_count must be an integer: {bundle_json_path}")
+    if receipt_finalists_count != finalists_count:
+        raise RuntimeError(
+            "bundle receipt finalists_count does not match validated finalists: "
+            f"bundle={receipt_finalists_count} validated={finalists_count}"
+        )
+
+    artifact_sha256 = bundle_payload.get("artifact_sha256")
+    if not isinstance(artifact_sha256, dict):
+        raise RuntimeError(f"bundle receipt artifact_sha256 must be an object: {bundle_json_path}")
+
+    expected_digests = {
+        "finalists_json": hashlib.sha256(finalists_json_path.read_bytes()).hexdigest(),
+        "finalists_md": hashlib.sha256(finalists_md_path.read_bytes()).hexdigest(),
+    }
+    for key, expected_digest in expected_digests.items():
+        digest = artifact_sha256.get(key)
+        if digest != expected_digest:
+            raise RuntimeError(
+                f"bundle receipt artifact_sha256.{key} does not match file contents: "
+                f"bundle={digest} expected={expected_digest}"
+            )
+
+    check_json_value = bundle_payload.get("check_json")
+    check_json_path = Path(check_json_value).resolve() if isinstance(check_json_value, str) and check_json_value else None
+    if run_check_in:
+        if check_json_path is None:
+            raise RuntimeError(f"bundle receipt missing check_json for run_check_in=true: {bundle_json_path}")
+        check_digest = artifact_sha256.get("check_json")
+        if not isinstance(check_digest, str) or not check_digest:
+            raise RuntimeError(f"bundle receipt missing artifact_sha256.check_json: {bundle_json_path}")
+        if not check_json_path.is_file():
+            raise RuntimeError(f"bundle receipt check_json file does not exist: {check_json_path}")
+        expected_check_digest = hashlib.sha256(check_json_path.read_bytes()).hexdigest()
+        if check_digest != expected_check_digest:
+            raise RuntimeError(
+                "bundle receipt artifact_sha256.check_json does not match file contents: "
+                f"bundle={check_digest} expected={expected_check_digest}"
+            )
+
+
 def _assert_finalists_source_matches_ranking(
     *,
     finalists_payload: dict[str, object],
@@ -370,6 +471,7 @@ def run_pilot_bundle_check(
     check_in: bool,
     allow_sample_input_in_check_in: bool = False,
     output_check_json: str = "",
+    bundle_json_path: Path | None = None,
 ) -> int:
     effective_require_real_input = require_real_input or (check_in and not allow_sample_input_in_check_in)
     effective_require_git_tracked = require_git_tracked or check_in
@@ -408,6 +510,21 @@ def run_pilot_bundle_check(
         expected_finalists=expected_finalists,
     )
 
+    if bundle_json_path is not None:
+        if not bundle_json_path.is_file():
+            raise RuntimeError(f"missing bundle_json file: {bundle_json_path}")
+        bundle_payload = _load_bundle_receipt_payload(bundle_json_path)
+        _assert_bundle_receipt(
+            bundle_json_path=bundle_json_path,
+            bundle_payload=bundle_payload,
+            ranked_json_path=paths["ranked_json"],
+            finalists_json_path=paths["finalists_json"],
+            finalists_md_path=paths["finalists_md"],
+            ranked_source_sha256=ranked_source_sha256,
+            finalists_count=len(expected_finalists),
+            check_in=check_in,
+        )
+
     if output_check_json:
         _write_check_receipt(
             path=Path(output_check_json),
@@ -431,17 +548,28 @@ def main() -> None:
         finalists_json_arg=args.finalists_json,
         finalists_md_arg=args.finalists_md,
     )
+    bundle_json_path: Path | None = None
+    if args.bundle_json:
+        bundle_json = Path(args.bundle_json)
+        if args.artifacts_dir and not bundle_json.is_absolute():
+            bundle_json_path = ranked_json_path.parent / bundle_json
+        else:
+            bundle_json_path = bundle_json
 
     if args.dry_run:
-        print(
+        dry_run_status = (
             "pilot_bundle_check_dry_run_ok "
             f"ranked_json={ranked_json_path} "
             f"finalists_json={finalists_json_path} "
             f"finalists_md={finalists_md_path} "
-            f"require_real_input={args.require_real_input} "
-            f"require_git_tracked={args.require_git_tracked} "
-            f"check_in={args.check_in}"
+            + (f"bundle_json={bundle_json_path} " if bundle_json_path is not None else "")
+            + f"require_real_input={args.require_real_input} "
+            + f"require_git_tracked={args.require_git_tracked} "
+            + f"check_in={args.check_in}"
             + (f" check_json={args.output_check_json}" if args.output_check_json else "")
+        )
+        print(
+            dry_run_status
         )
         return
 
@@ -453,6 +581,7 @@ def main() -> None:
         require_git_tracked=args.require_git_tracked,
         check_in=args.check_in,
         output_check_json=args.output_check_json,
+        bundle_json_path=bundle_json_path,
     )
 
     status_line = (
@@ -462,6 +591,8 @@ def main() -> None:
     )
     if args.output_check_json:
         status_line += f" check_json={args.output_check_json}"
+    if bundle_json_path is not None:
+        status_line += f" bundle_json={bundle_json_path}"
     print(
         status_line
     )
