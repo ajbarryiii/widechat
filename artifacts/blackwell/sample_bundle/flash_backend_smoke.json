@@ -1,0 +1,10 @@
+{
+  "selected_backend": "fa4",
+  "status_line": "Flash Attention backend selection: selected=fa4, mode=auto",
+  "cuda_available": true,
+  "device_name": "RTX 5090",
+  "cuda_capability": [
+    10,
+    0
+  ]
+}

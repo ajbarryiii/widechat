@@ -1,0 +1,8 @@
+{
+  "bundle_dir": "artifacts/blackwell/sample_bundle",
+  "expect_backend": "fa4",
+  "selected_backend": "fa4",
+  "check_in": true,
+  "require_blackwell": true,
+  "require_git_tracked": true
+}
