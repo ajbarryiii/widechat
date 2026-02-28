@@ -78,6 +78,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="only resolve bundle/check settings and print planned validation",
     )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="validate required bundle files are present before strict check-in validation",
+    )
     return parser.parse_args()
 
 
@@ -166,6 +171,23 @@ def _assert_files_exist(paths: dict[str, Path]) -> None:
     for label, path in paths.items():
         if not path.is_file():
             raise RuntimeError(f"missing {label} file: {path}")
+
+
+def run_bundle_preflight(*, bundle_dir: Path, require_real_bundle: bool) -> None:
+    paths = _required_paths(bundle_dir)
+    missing_files = [path.name for path in paths.values() if not path.is_file()]
+    if missing_files:
+        missing_list = ", ".join(missing_files)
+        raise RuntimeError(
+            "bundle preflight failed: missing required bundle files "
+            f"({missing_list}) in {bundle_dir}; run "
+            f"`python -m scripts.run_blackwell_smoke_bundle --output-dir {bundle_dir}` on RTX 5090"
+        )
+
+    if require_real_bundle:
+        _assert_real_bundle_dir(bundle_dir)
+        payload = _load_artifact(str(paths["artifact_json"]))
+        _assert_real_bundle_payload(payload, paths["artifact_json"])
 
 
 def _assert_git_tracked(paths: dict[str, Path], bundle_dir: Path) -> None:
@@ -398,10 +420,25 @@ def run_bundle_check(
 
 def main() -> None:
     args = _parse_args()
+    if args.preflight and args.dry_run:
+        raise RuntimeError("--preflight and --dry-run are mutually exclusive")
+
     bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     effective_require_blackwell = args.require_blackwell or args.check_in
     effective_require_git_tracked = args.require_git_tracked or args.check_in
     effective_require_device_substring = args.require_device_substring or ("RTX 5090" if args.check_in else "")
+
+    if args.preflight:
+        run_bundle_preflight(
+            bundle_dir=bundle_dir,
+            require_real_bundle=args.require_real_bundle,
+        )
+        print(
+            "bundle_preflight_ok "
+            f"bundle_dir={bundle_dir} "
+            f"require_real_bundle={args.require_real_bundle}"
+        )
+        return
 
     if args.dry_run:
         print(

@@ -673,3 +673,67 @@ def test_main_dry_run_uses_none_for_empty_report_path(tmp_path, monkeypatch, cap
     stdout = capsys.readouterr().out
     assert "bundle_check_dry_run_ok" in stdout
     assert "output_check_json=<none>" in stdout
+
+
+def test_main_preflight_accepts_complete_bundle(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert "bundle_preflight_ok" in stdout
+    assert f"bundle_dir={bundle_dir}" in stdout
+
+
+def test_main_preflight_rejects_missing_files_with_actionable_error(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    (bundle_dir / "blackwell_smoke_runbook.md").write_text("# runbook\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        checker.main()
+
+    message = str(exc_info.value)
+    assert "bundle preflight failed" in message
+    assert "flash_backend_smoke.json" in message
+    assert "flash_backend_status.log" in message
+    assert "blackwell_smoke_evidence.md" in message
+    assert "scripts.run_blackwell_smoke_bundle --output-dir" in message
+
+
+def test_main_preflight_mutually_exclusive_with_dry_run(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        checker.main()
