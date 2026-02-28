@@ -3,6 +3,7 @@
 Example:
 python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell
 python -m scripts.flash_backend_smoke --output-json artifacts/flash_backend_smoke.json
+python -m scripts.flash_backend_smoke --output-status-line artifacts/flash_backend_status.log
 """
 
 import argparse
@@ -24,6 +25,7 @@ def _parse_args() -> argparse.Namespace:
         help="fail if selected backend does not match",
     )
     parser.add_argument("--output-json", default="", help="optional path to write parsed backend artifact")
+    parser.add_argument("--output-status-line", default="", help="optional path to write canonical backend status line")
     parser.add_argument("--require-cuda", action="store_true", help="fail if CUDA is unavailable")
     parser.add_argument("--require-blackwell", action="store_true", help="fail unless CUDA capability is sm100+")
     return parser.parse_args()
@@ -76,6 +78,12 @@ def _write_smoke_artifact(path: str, status_line: str, selected_backend: str) ->
     output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _write_status_line(path: str, status_line: str) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(status_line.rstrip("\n") + "\n", encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     _validate_environment(args.require_cuda, args.require_blackwell)
@@ -87,6 +95,8 @@ def main() -> None:
         raise RuntimeError(f"expected backend {args.expect_backend}, got {selected}")
     if args.output_json:
         _write_smoke_artifact(args.output_json, status, selected)
+    if args.output_status_line:
+        _write_status_line(args.output_status_line, status)
 
 
 if __name__ == "__main__":

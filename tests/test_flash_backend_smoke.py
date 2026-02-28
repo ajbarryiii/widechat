@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.flash_backend_smoke import _device_metadata, _extract_selected_backend, _validate_environment, _write_smoke_artifact
+from scripts.flash_backend_smoke import _device_metadata, _extract_selected_backend, _validate_environment, _write_smoke_artifact, _write_status_line
 
 
 def test_extract_selected_backend_parses_known_backends():
@@ -76,3 +76,12 @@ def test_device_metadata_reports_capability_when_cuda_available(monkeypatch):
         "device_name": "RTX 5090",
         "cuda_capability": [10, 0],
     }
+
+
+def test_write_status_line_writes_canonical_line(tmp_path):
+    output = tmp_path / "logs" / "backend_status.log"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto\n"
+
+    _write_status_line(str(output), status)
+
+    assert output.read_text(encoding="utf-8") == "Flash Attention backend selection: selected=fa4, mode=auto\n"
