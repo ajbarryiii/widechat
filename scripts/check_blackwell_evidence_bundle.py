@@ -82,17 +82,41 @@ def _required_paths(bundle_dir: Path) -> dict[str, Path]:
     }
 
 
-def _is_real_bundle_dir(bundle_dir: Path) -> bool:
-    if "sample_bundle" in bundle_dir.parts:
-        return False
-    if not all((bundle_dir / filename).is_file() for filename in _REQUIRED_BUNDLE_FILES):
-        return False
+def _classify_bundle_dir(bundle_dir: Path) -> str:
+    if any("sample" in part.lower() for part in bundle_dir.parts):
+        return "sample path segment"
+
+    missing_files = [name for name in _REQUIRED_BUNDLE_FILES if not (bundle_dir / name).is_file()]
+    if missing_files:
+        return f"missing files: {', '.join(missing_files)}"
+
     artifact_path = bundle_dir / "flash_backend_smoke.json"
     try:
         payload = _load_artifact(str(artifact_path))
-    except (OSError, ValueError, RuntimeError, json.JSONDecodeError):
-        return False
-    return payload.get("is_sample") is not True
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
+        return f"invalid flash_backend_smoke.json: {exc}"
+
+    if payload.get("is_sample") is True:
+        return "payload marked is_sample=true"
+
+    return "real"
+
+
+def _render_no_real_bundle_error(
+    *,
+    bundle_root: Path,
+    rejected_dirs: list[tuple[Path, str]],
+) -> str:
+    lines = [
+        f"no real Blackwell bundle found under {bundle_root}; run scripts.run_blackwell_smoke_bundle on RTX 5090 first",
+        "discovery searched for 'flash_backend_smoke.json' files and "
+        f"rejected {len(rejected_dirs)} candidate bundle(s)",
+    ]
+    for rejected_path, reason in rejected_dirs[:5]:
+        lines.append(f"- {rejected_path}: {reason}")
+    if len(rejected_dirs) > 5:
+        lines.append(f"- ... {len(rejected_dirs) - 5} more candidate bundle(s) omitted")
+    return "\n".join(lines)
 
 
 def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
@@ -105,14 +129,26 @@ def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
             f"bundle_root does not exist: {bundle_root}; pass --bundle-dir explicitly or emit a bundle first"
         )
 
-    candidates = [path for path in bundle_root.rglob("flash_backend_smoke.json") if _is_real_bundle_dir(path.parent)]
+    discovered_dirs = sorted({path.parent for path in bundle_root.rglob("flash_backend_smoke.json") if path.is_file()})
+    candidates: list[Path] = []
+    rejected_dirs: list[tuple[Path, str]] = []
+    for discovered_dir in discovered_dirs:
+        classification = _classify_bundle_dir(discovered_dir)
+        if classification == "real":
+            candidates.append(discovered_dir)
+        else:
+            rejected_dirs.append((discovered_dir, classification))
+
     if not candidates:
         raise RuntimeError(
-            f"no real Blackwell bundle found under {bundle_root}; run scripts.run_blackwell_smoke_bundle on RTX 5090 first"
+            _render_no_real_bundle_error(
+                bundle_root=bundle_root,
+                rejected_dirs=rejected_dirs,
+            )
         )
 
-    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return candidates[0].parent
+    candidates.sort(key=lambda path: (path / "flash_backend_smoke.json").stat().st_mtime, reverse=True)
+    return candidates[0]
 
 
 def _assert_files_exist(paths: dict[str, Path]) -> None:
