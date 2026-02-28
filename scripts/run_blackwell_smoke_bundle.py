@@ -11,7 +11,9 @@ import shlex
 from pathlib import Path
 
 from scripts.flash_backend_smoke import (
+    _device_metadata,
     _extract_selected_backend,
+    _query_nvidia_smi_gpus,
     _resolve_output_paths,
     _validate_environment,
     _write_smoke_artifact,
@@ -199,6 +201,11 @@ def main() -> None:
             "run_bundle_check": args.run_bundle_check,
             "check_json": output_check_json if args.run_bundle_check else None,
         }
+        payload.update(_device_metadata())
+        nvidia_smi_ok, nvidia_smi_lines, nvidia_smi_error = _query_nvidia_smi_gpus()
+        payload["nvidia_smi_ok"] = nvidia_smi_ok
+        payload["nvidia_smi"] = nvidia_smi_lines
+        payload["nvidia_smi_error"] = nvidia_smi_error
         _write_preflight_receipt(output_preflight_json, payload)
 
         if not preflight_ready:

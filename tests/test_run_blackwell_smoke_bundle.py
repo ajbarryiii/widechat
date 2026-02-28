@@ -335,6 +335,20 @@ def test_main_preflight_writes_ready_receipt_without_backend_probe(tmp_path, mon
     monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
     monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
     monkeypatch.setattr(
+        bundle,
+        "_device_metadata",
+        lambda: {
+            "cuda_available": True,
+            "device_name": "NVIDIA GeForce RTX 5090",
+            "cuda_capability": [10, 0],
+        },
+    )
+    monkeypatch.setattr(
+        bundle,
+        "_query_nvidia_smi_gpus",
+        lambda: (True, ["NVIDIA GeForce RTX 5090, 575.64"], None),
+    )
+    monkeypatch.setattr(
         "sys.argv",
         [
             "run_blackwell_smoke_bundle.py",
@@ -359,6 +373,12 @@ def test_main_preflight_writes_ready_receipt_without_backend_probe(tmp_path, mon
     assert receipt["ready"] is True
     assert receipt["error"] == ""
     assert receipt["check_json"] is None
+    assert receipt["cuda_available"] is True
+    assert receipt["device_name"] == "NVIDIA GeForce RTX 5090"
+    assert receipt["cuda_capability"] == [10, 0]
+    assert receipt["nvidia_smi_ok"] is True
+    assert receipt["nvidia_smi"] == ["NVIDIA GeForce RTX 5090, 575.64"]
+    assert receipt["nvidia_smi_error"] is None
 
     stdout = capsys.readouterr().out
     assert "bundle_preflight_ok" in stdout
@@ -379,6 +399,20 @@ def test_main_preflight_writes_blocked_receipt_and_raises(tmp_path, monkeypatch,
 
     monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
     monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
+    monkeypatch.setattr(
+        bundle,
+        "_device_metadata",
+        lambda: {
+            "cuda_available": False,
+            "device_name": None,
+            "cuda_capability": None,
+        },
+    )
+    monkeypatch.setattr(
+        bundle,
+        "_query_nvidia_smi_gpus",
+        lambda: (False, [], "nvidia-smi: command not found"),
+    )
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -401,6 +435,12 @@ def test_main_preflight_writes_blocked_receipt_and_raises(tmp_path, monkeypatch,
     assert receipt["ready"] is False
     assert reason in receipt["error"]
     assert receipt["check_json"] == str(output_dir / "blackwell_bundle_check.json")
+    assert receipt["cuda_available"] is False
+    assert receipt["device_name"] is None
+    assert receipt["cuda_capability"] is None
+    assert receipt["nvidia_smi_ok"] is False
+    assert receipt["nvidia_smi"] == []
+    assert "nvidia-smi" in receipt["nvidia_smi_error"]
 
     stdout = capsys.readouterr().out
     assert "bundle_preflight_blocked" in stdout
