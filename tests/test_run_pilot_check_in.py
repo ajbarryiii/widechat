@@ -160,6 +160,71 @@ def test_main_dry_run_resolves_bundle_json_auto(tmp_path, monkeypatch, capsys):
     assert f"bundle_json={artifacts_dir / 'stage2_promotion_bundle.json'}" in stdout
 
 
+def test_main_dry_run_prints_check_md_when_set(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot"
+    check_md = tmp_path / "receipts" / "pilot_check_in.md"
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--output-check-md",
+            str(check_md),
+            "--dry-run",
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert f"check_md={check_md}" in stdout
+
+
+def test_main_writes_check_markdown_summary(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot"
+    check_md = tmp_path / "receipts" / "pilot_check_in.md"
+    bundle_json = tmp_path / "receipts" / "promotion_bundle.json"
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        return 2
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--output-check-md",
+            str(check_md),
+            "--bundle-json",
+            str(bundle_json),
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert f"check_md={check_md}" in stdout
+    markdown = check_md.read_text(encoding="utf-8")
+    assert "# Pilot Artifact Strict Check-In Evidence" in markdown
+    assert "- finalists: `2`" in markdown
+    assert f"- artifacts_dir: `{artifacts_dir}`" in markdown
+    assert f"- ranked_json: `{artifacts_dir / 'pilot_ranked_runs.json'}`" in markdown
+    assert f"- finalists_json: `{artifacts_dir / 'stage2_finalists.json'}`" in markdown
+    assert f"- finalists_md: `{artifacts_dir / 'stage2_finalists.md'}`" in markdown
+    assert f"- check_json: `{artifacts_dir / 'pilot_bundle_check.json'}`" in markdown
+    assert "- require_real_input: `true`" in markdown
+    assert "- check_in_mode: `true`" in markdown
+    assert f"- bundle_json: `{bundle_json}`" in markdown
+
+
 def test_main_auto_selects_latest_real_artifacts_dir(tmp_path, monkeypatch):
     artifacts_root = tmp_path / "artifacts" / "pilot"
     older_artifacts = artifacts_root / "run_older"

@@ -43,6 +43,11 @@ def _parse_args() -> argparse.Namespace:
         help="optional path for checker receipt (defaults to <artifacts-dir>/pilot_bundle_check.json)",
     )
     parser.add_argument(
+        "--output-check-md",
+        default="",
+        help="optional path for markdown check-in evidence summary",
+    )
+    parser.add_argument(
         "--bundle-json",
         default="",
         help=(
@@ -67,6 +72,37 @@ def _parse_args() -> argparse.Namespace:
         help="only resolve paths and print planned checker invocation",
     )
     return parser.parse_args()
+
+
+def _write_check_markdown(
+    *,
+    output_path: Path,
+    artifacts_dir: Path,
+    ranked_json: Path,
+    finalists_json: Path,
+    finalists_md: Path,
+    check_json: str,
+    finalists_count: int,
+    allow_sample_input: bool,
+    bundle_json_path: Path | None,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Pilot Artifact Strict Check-In Evidence",
+        "",
+        f"- finalists: `{finalists_count}`",
+        f"- artifacts_dir: `{artifacts_dir}`",
+        f"- ranked_json: `{ranked_json}`",
+        f"- finalists_json: `{finalists_json}`",
+        f"- finalists_md: `{finalists_md}`",
+        f"- check_json: `{check_json}`",
+        f"- require_real_input: `{str(not allow_sample_input).lower()}`",
+        f"- check_in_mode: `true`",
+    ]
+    if bundle_json_path is not None:
+        lines.append(f"- bundle_json: `{bundle_json_path}`")
+    lines.append("")
+    output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _classify_artifacts_dir(
@@ -176,6 +212,7 @@ def main() -> None:
     finalists_json = artifacts_dir / args.finalists_json
     finalists_md = artifacts_dir / args.finalists_md
     output_check_json = args.output_check_json or str(artifacts_dir / "pilot_bundle_check.json")
+    output_check_md = args.output_check_md
     bundle_json_path = _resolve_bundle_json_path(
         bundle_json_arg=args.bundle_json,
         bundle_json_name=args.bundle_json_name,
@@ -191,6 +228,7 @@ def main() -> None:
             f"finalists_md={finalists_md} "
             f"check_json={output_check_json} "
             f"allow_sample_input={args.allow_sample_input}"
+            + (f" check_md={output_check_md}" if output_check_md else "")
             + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
         )
         return
@@ -207,11 +245,25 @@ def main() -> None:
         bundle_json_path=bundle_json_path,
     )
 
+    if output_check_md:
+        _write_check_markdown(
+            output_path=Path(output_check_md),
+            artifacts_dir=artifacts_dir,
+            ranked_json=ranked_json,
+            finalists_json=finalists_json,
+            finalists_md=finalists_md,
+            check_json=output_check_json,
+            finalists_count=finalists_count,
+            allow_sample_input=args.allow_sample_input,
+            bundle_json_path=bundle_json_path,
+        )
+
     print(
         "pilot_check_in_ok "
         f"finalists={finalists_count} "
         f"artifacts_dir={artifacts_dir} "
         f"check_json={output_check_json}"
+        + (f" check_md={output_check_md}" if output_check_md else "")
         + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
     )
 
