@@ -6,6 +6,7 @@ python -m scripts.run_pilot_check_in --artifacts-dir auto --artifacts-root artif
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 from scripts.check_pilot_sweep_artifacts import run_pilot_bundle_check
@@ -71,6 +72,11 @@ def _parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="only resolve paths and print planned checker invocation",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="validate required artifact/checker inputs before strict check-in",
     )
     return parser.parse_args()
 
@@ -218,6 +224,64 @@ def _resolve_bundle_json_path(
     return artifacts_dir / bundle_json
 
 
+def _is_git_tracked(path: Path) -> bool:
+    try:
+        rel_path = path.resolve().relative_to(Path.cwd().resolve())
+    except ValueError:
+        return False
+
+    result = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", str(rel_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _run_preflight(
+    *,
+    artifacts_dir: Path,
+    ranked_json: Path,
+    finalists_json: Path,
+    finalists_md: Path,
+    bundle_json_path: Path | None,
+    output_check_json: str,
+    allow_sample_input: bool,
+) -> None:
+    missing = [
+        str(path)
+        for path in (ranked_json, finalists_json, finalists_md)
+        if not path.is_file()
+    ]
+    if bundle_json_path is not None and not bundle_json_path.is_file():
+        missing.append(str(bundle_json_path))
+
+    if missing:
+        raise RuntimeError(
+            "pilot_check_in_preflight failed: missing required file(s): " + ", ".join(missing)
+        )
+
+    git_tracked_paths = {
+        str(path): _is_git_tracked(path)
+        for path in (ranked_json, finalists_json, finalists_md)
+    }
+    if bundle_json_path is not None:
+        git_tracked_paths[str(bundle_json_path)] = _is_git_tracked(bundle_json_path)
+
+    print(
+        "pilot_check_in_preflight_ok "
+        f"artifacts_dir={artifacts_dir} "
+        f"ranked_json={ranked_json} "
+        f"finalists_json={finalists_json} "
+        f"finalists_md={finalists_md} "
+        f"check_json={output_check_json} "
+        f"allow_sample_input={allow_sample_input} "
+        f"git_tracked={json.dumps(git_tracked_paths, sort_keys=True)}"
+        + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+    )
+
+
 def main() -> None:
     args = _parse_args()
     artifacts_dir = _resolve_artifacts_dir(
@@ -249,6 +313,18 @@ def main() -> None:
             f"allow_sample_input={args.allow_sample_input}"
             + (f" check_md={output_check_md}" if output_check_md else "")
             + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+        )
+        return
+
+    if args.preflight:
+        _run_preflight(
+            artifacts_dir=artifacts_dir,
+            ranked_json=ranked_json,
+            finalists_json=finalists_json,
+            finalists_md=finalists_md,
+            bundle_json_path=bundle_json_path,
+            output_check_json=output_check_json,
+            allow_sample_input=args.allow_sample_input,
         )
         return
 

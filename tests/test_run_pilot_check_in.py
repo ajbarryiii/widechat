@@ -190,6 +190,54 @@ def test_main_dry_run_prints_check_md_when_set(tmp_path, monkeypatch, capsys):
     assert f"check_md={check_md}" in stdout
 
 
+def test_main_preflight_prints_paths_and_skips_checker(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot"
+    _write_artifact_files(artifacts_dir)
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in preflight mode")
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--preflight",
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert "pilot_check_in_preflight_ok" in stdout
+    assert f"artifacts_dir={artifacts_dir}" in stdout
+    assert f"ranked_json={artifacts_dir / 'pilot_ranked_runs.json'}" in stdout
+    assert f"finalists_json={artifacts_dir / 'stage2_finalists.json'}" in stdout
+    assert f"finalists_md={artifacts_dir / 'stage2_finalists.md'}" in stdout
+    assert f"check_json={artifacts_dir / 'pilot_bundle_check.json'}" in stdout
+
+
+def test_main_preflight_rejects_missing_required_files(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "pilot"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    (artifacts_dir / "pilot_ranked_runs.json").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--preflight",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match=r"pilot_check_in_preflight failed: missing required file\(s\)"):
+        runner.main()
+
+
 def test_main_writes_check_markdown_summary(tmp_path, monkeypatch, capsys):
     artifacts_dir = tmp_path / "pilot"
     check_md = tmp_path / "receipts" / "pilot_check_in.md"
