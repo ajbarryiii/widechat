@@ -173,17 +173,48 @@ def _assert_git_tracked(paths: dict[str, Path], bundle_dir: Path) -> None:
             raise RuntimeError(f"bundle artifact is not git-tracked: {path}")
 
 
-def _assert_evidence_content(evidence_text: str, selected_backend: str) -> None:
-    required_lines = [
-        "# Blackwell Flash Backend Smoke Evidence",
-        f"- selected_backend: `{selected_backend}`",
-        "- generated_at_utc: `",
-        "- git_commit: `",
-        "- status_line_ok: `true`",
-    ]
-    for line in required_lines:
-        if line not in evidence_text:
-            raise RuntimeError(f"evidence markdown missing line: {line}")
+def _extract_evidence_value(evidence_text: str, key: str) -> str:
+    prefix = f"- {key}: `"
+    for raw_line in evidence_text.splitlines():
+        line = raw_line.strip()
+        if line.startswith(prefix) and line.endswith("`"):
+            return line[len(prefix) : -1]
+    raise RuntimeError(f"evidence markdown missing line: - {key}: `...`")
+
+
+def _assert_evidence_content(
+    evidence_text: str,
+    selected_backend: str,
+    generated_at_utc: str,
+    git_commit: str,
+) -> None:
+    if "# Blackwell Flash Backend Smoke Evidence" not in evidence_text:
+        raise RuntimeError("evidence markdown missing line: # Blackwell Flash Backend Smoke Evidence")
+
+    evidence_selected_backend = _extract_evidence_value(evidence_text, "selected_backend")
+    if evidence_selected_backend != selected_backend:
+        raise RuntimeError(
+            "evidence markdown selected_backend mismatch: "
+            f"expected {selected_backend}, got {evidence_selected_backend}"
+        )
+
+    evidence_generated_at = _extract_evidence_value(evidence_text, "generated_at_utc")
+    if evidence_generated_at != generated_at_utc:
+        raise RuntimeError(
+            "evidence markdown generated_at_utc mismatch: "
+            f"expected {generated_at_utc}, got {evidence_generated_at}"
+        )
+
+    evidence_git_commit = _extract_evidence_value(evidence_text, "git_commit")
+    if evidence_git_commit != git_commit:
+        raise RuntimeError(
+            "evidence markdown git_commit mismatch: "
+            f"expected {git_commit}, got {evidence_git_commit}"
+        )
+
+    evidence_status_line_ok = _extract_evidence_value(evidence_text, "status_line_ok")
+    if evidence_status_line_ok.lower() != "true":
+        raise RuntimeError("evidence markdown status_line_ok mismatch: expected true")
 
 
 def _assert_real_bundle_dir(bundle_dir: Path) -> None:
@@ -335,7 +366,12 @@ def run_bundle_check(
         raise RuntimeError(f"expected backend {expect_backend}, got {status_backend} in status-line file")
 
     evidence_text = paths["evidence_md"].read_text(encoding="utf-8")
-    _assert_evidence_content(evidence_text, selected_backend)
+    _assert_evidence_content(
+        evidence_text,
+        selected_backend,
+        str(payload.get("generated_at_utc") or ""),
+        str(payload.get("git_commit") or ""),
+    )
 
     runbook_text = paths["runbook_md"].read_text(encoding="utf-8")
     _assert_runbook_content(runbook_text, bundle_dir, expect_backend)

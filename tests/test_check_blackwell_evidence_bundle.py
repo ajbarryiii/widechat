@@ -119,6 +119,58 @@ def test_main_rejects_evidence_markdown_drift(tmp_path, monkeypatch):
         checker.main()
 
 
+def test_main_rejects_evidence_generated_at_mismatch(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    (bundle_dir / "blackwell_smoke_evidence.md").write_text(
+        (bundle_dir / "blackwell_smoke_evidence.md")
+        .read_text(encoding="utf-8")
+        .replace("2026-02-27T00:00:00Z", "2026-02-27T01:00:00Z"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("sys.argv", ["check_blackwell_evidence_bundle.py", "--bundle-dir", str(bundle_dir)])
+
+    with pytest.raises(RuntimeError, match="evidence markdown generated_at_utc mismatch"):
+        checker.main()
+
+
+def test_main_rejects_evidence_git_commit_mismatch(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    (bundle_dir / "blackwell_smoke_evidence.md").write_text(
+        (bundle_dir / "blackwell_smoke_evidence.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("sys.argv", ["check_blackwell_evidence_bundle.py", "--bundle-dir", str(bundle_dir)])
+
+    with pytest.raises(RuntimeError, match="evidence markdown git_commit mismatch"):
+        checker.main()
+
+
+def test_main_rejects_evidence_status_line_not_true(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    (bundle_dir / "blackwell_smoke_evidence.md").write_text(
+        (bundle_dir / "blackwell_smoke_evidence.md")
+        .read_text(encoding="utf-8")
+        .replace("- status_line_ok: `true`", "- status_line_ok: `false`"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("sys.argv", ["check_blackwell_evidence_bundle.py", "--bundle-dir", str(bundle_dir)])
+
+    with pytest.raises(RuntimeError, match="evidence markdown status_line_ok mismatch"):
+        checker.main()
+
+
 def test_main_require_git_tracked_accepts_tracked_bundle(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
     _write_valid_bundle(bundle_dir)
