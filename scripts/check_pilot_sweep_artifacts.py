@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from nanochat.pilot_sweep import DEFAULT_PILOT_TARGETS
 from nanochat.pilot_sweep import select_finalists
 from scripts.pilot_promote import _load_ranked_runs_with_source_hash
 
@@ -438,6 +439,75 @@ def _assert_finalists_markdown(
             )
 
 
+def _assert_full_default_pilot_grid_coverage(
+    ranked_runs: list[dict[str, int | float | bool | str | None]],
+) -> None:
+    def _require_positive_int(
+        row: dict[str, int | float | bool | str | None],
+        key: str,
+        *,
+        config: str,
+    ) -> int:
+        value = row.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise RuntimeError(
+                "strict check-in requires positive integer fields for default pilot configs; "
+                f"{config} has invalid {key}={value!r}"
+            )
+        return value
+
+    expected_by_config = {
+        target.label: (target.depth, target.n_branches, target.aspect_ratio)
+        for target in DEFAULT_PILOT_TARGETS
+    }
+
+    seen_by_config: dict[str, tuple[int, int, int]] = {}
+    duplicates: set[str] = set()
+    mismatches: list[str] = []
+    unexpected: list[str] = []
+
+    for row in ranked_runs:
+        config = str(row.get("config") or "")
+        if config not in expected_by_config:
+            unexpected.append(config or "<empty>")
+            continue
+
+        actual_tuple = (
+            _require_positive_int(row, "depth", config=config),
+            _require_positive_int(row, "n_branches", config=config),
+            _require_positive_int(row, "aspect_ratio", config=config),
+        )
+        expected_tuple = expected_by_config[config]
+
+        if config in seen_by_config:
+            duplicates.add(config)
+            continue
+        seen_by_config[config] = actual_tuple
+
+        if actual_tuple != expected_tuple:
+            mismatches.append(
+                f"{config} expected d={expected_tuple[0]} b={expected_tuple[1]} ar={expected_tuple[2]} "
+                f"got d={actual_tuple[0]} b={actual_tuple[1]} ar={actual_tuple[2]}"
+            )
+
+    missing = sorted(set(expected_by_config) - set(seen_by_config))
+    if missing or duplicates or mismatches or unexpected:
+        details: list[str] = []
+        if missing:
+            details.append(f"missing configs: {', '.join(missing)}")
+        if duplicates:
+            details.append(f"duplicate configs: {', '.join(sorted(duplicates))}")
+        if mismatches:
+            details.extend(mismatches)
+        if unexpected:
+            details.append(f"unexpected configs: {', '.join(sorted(unexpected))}")
+        raise RuntimeError(
+            "strict check-in requires full default pilot config coverage "
+            f"({', '.join(sorted(expected_by_config))}); "
+            + "; ".join(details)
+        )
+
+
 def _write_check_receipt(
     *,
     path: Path,
@@ -497,6 +567,8 @@ def run_pilot_bundle_check(
         str(paths["ranked_json"]),
         require_real_input=effective_require_real_input,
     )
+    if check_in and effective_require_real_input:
+        _assert_full_default_pilot_grid_coverage(ranked_runs)
     if effective_require_git_tracked:
         _assert_git_tracked(paths)
 

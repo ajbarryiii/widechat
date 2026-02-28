@@ -5,6 +5,7 @@ import hashlib
 
 import pytest
 
+from nanochat.pilot_sweep import DEFAULT_PILOT_TARGETS
 from scripts import check_pilot_sweep_artifacts as checker
 from scripts import pilot_promote
 
@@ -122,6 +123,65 @@ def _write_bundle_receipt(
         payload["artifact_sha256"]["check_json"] = _sha256(check_json)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _write_full_grid_artifacts(base_dir):
+    base_dir.mkdir(parents=True, exist_ok=True)
+    ranked_json = base_dir / "pilot_ranked_runs.json"
+    finalists_json = base_dir / "stage2_finalists.json"
+    finalists_md = base_dir / "stage2_finalists.md"
+
+    ranked_runs = []
+    for index, target in enumerate(DEFAULT_PILOT_TARGETS, start=1):
+        qualified = index <= 3
+        ranked_runs.append(
+            {
+                "rank": index if qualified else None,
+                "config": target.label,
+                "depth": target.depth,
+                "n_branches": target.n_branches,
+                "aspect_ratio": target.aspect_ratio,
+                "selected_tok_per_sec": 1200 - index * 10,
+                "min_val_bpb": 4.0 + index * 0.01,
+                "token_budget": 250000000,
+                "qualified": qualified,
+                "disqualify_reason": None if qualified else "slow>5.0%",
+            }
+        )
+
+    ranked_payload = {"ranked_runs": ranked_runs}
+    ranked_json.write_text(json.dumps(ranked_payload), encoding="utf-8")
+    ranked_source_sha256 = pilot_promote._stable_json_sha256(ranked_payload)
+
+    selected_finalists = [row for row in ranked_runs if row["qualified"]][:2]
+    finalists_json.write_text(
+        json.dumps(
+            {
+                "source": str(ranked_json),
+                "source_sha256": ranked_source_sha256,
+                "max_finalists": 2,
+                "selected_finalists": selected_finalists,
+            }
+        ),
+        encoding="utf-8",
+    )
+    finalists_md.write_text(
+        "\n".join(
+            [
+                "## Stage 2 Finalists",
+                "",
+                "Selected finalists:",
+                "",
+                "## Stage 2 depth/branch flags",
+                "",
+                f"- `{selected_finalists[0]['config']}`: `--depth {selected_finalists[0]['depth']} --n-branches {selected_finalists[0]['n_branches']} --aspect-ratio {selected_finalists[0]['aspect_ratio']}`",
+                f"- `{selected_finalists[1]['config']}`: `--depth {selected_finalists[1]['depth']} --n-branches {selected_finalists[1]['n_branches']} --aspect-ratio {selected_finalists[1]['aspect_ratio']}`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return ranked_json, finalists_json, finalists_md
 
 
 def test_main_accepts_valid_artifacts(tmp_path, monkeypatch, capsys):
@@ -543,6 +603,49 @@ def test_main_check_in_mode_rejects_sample_payload_flag(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
         checker.main()
+
+
+def test_main_check_in_mode_rejects_incomplete_default_grid(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="requires full default pilot config coverage"):
+        checker.main()
+
+
+def test_main_check_in_mode_accepts_full_default_grid(tmp_path, monkeypatch, capsys):
+    ranked_json, finalists_json, finalists_md = _write_full_grid_artifacts(tmp_path)
+    monkeypatch.setattr(checker, "_assert_git_tracked", lambda paths: None)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--check-in",
+        ],
+    )
+
+    checker.main()
+    assert "pilot_bundle_check_ok finalists=2" in capsys.readouterr().out
 
 
 def test_run_bundle_check_allows_sample_input_override_in_check_in_mode(tmp_path, monkeypatch):
