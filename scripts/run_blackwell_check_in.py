@@ -23,6 +23,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path for checker receipt (defaults to <bundle-dir>/blackwell_bundle_check.json)",
     )
+    parser.add_argument(
+        "--allow-sample-bundle",
+        action="store_true",
+        help="allow sample fixture bundles (for local regression checks)",
+    )
     return parser.parse_args()
 
 
@@ -37,6 +42,7 @@ def main() -> None:
         check_in=True,
         require_blackwell=False,
         require_git_tracked=False,
+        require_real_bundle=not args.allow_sample_bundle,
         output_check_json=output_check_json,
     )
     print(

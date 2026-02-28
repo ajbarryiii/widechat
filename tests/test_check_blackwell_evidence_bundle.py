@@ -240,6 +240,28 @@ def test_main_check_in_mode_rejects_non_blackwell_bundle(tmp_path, monkeypatch):
         checker.main()
 
 
+def test_main_require_real_bundle_rejects_sample_fixture_path(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "artifacts" / "blackwell" / "sample_bundle"
+    _write_valid_bundle(bundle_dir)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--require-real-bundle",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="sample fixture artifacts"):
+        checker.main()
+
+
 def test_main_writes_machine_readable_check_report(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
     _write_valid_bundle(bundle_dir)

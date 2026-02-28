@@ -32,6 +32,7 @@ def test_main_runs_strict_check_in_with_default_receipt(tmp_path, monkeypatch, c
     assert calls["check_in"] is True
     assert calls["require_blackwell"] is False
     assert calls["require_git_tracked"] is False
+    assert calls["require_real_bundle"] is True
     assert calls["output_check_json"] == str(bundle_dir / "blackwell_bundle_check.json")
 
     stdout = capsys.readouterr().out
@@ -64,6 +65,31 @@ def test_main_honors_custom_receipt_path(tmp_path, monkeypatch):
     runner.main()
 
     assert calls["output_check_json"] == str(receipt_path)
+    assert calls["require_real_bundle"] is True
+
+
+def test_main_allows_sample_bundle_when_requested(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "artifacts" / "blackwell" / "sample_bundle"
+    calls = {}
+
+    def _fake_run_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return "fa4"
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--allow-sample-bundle",
+        ],
+    )
+
+    runner.main()
+
+    assert calls["require_real_bundle"] is False
 
 
 def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):
@@ -88,6 +114,7 @@ def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):
             "fa4",
             "--output-check-json",
             str(generated_receipt),
+            "--allow-sample-bundle",
         ],
     )
 

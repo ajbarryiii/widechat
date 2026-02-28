@@ -41,6 +41,11 @@ def _parse_args() -> argparse.Namespace:
         help="enable strict check-in mode (requires Blackwell and git-tracked artifacts)",
     )
     parser.add_argument(
+        "--require-real-bundle",
+        action="store_true",
+        help="reject sample fixture bundles and require real emitted artifacts",
+    )
+    parser.add_argument(
         "--output-check-json",
         default="",
         help="optional path for machine-readable bundle-check receipt",
@@ -80,6 +85,13 @@ def _assert_evidence_content(evidence_text: str, selected_backend: str) -> None:
     for line in required_lines:
         if line not in evidence_text:
             raise RuntimeError(f"evidence markdown missing line: {line}")
+
+
+def _assert_real_bundle_dir(bundle_dir: Path) -> None:
+    if "sample_bundle" in bundle_dir.parts:
+        raise RuntimeError(
+            "bundle_dir points to sample fixture artifacts; use emitted RTX 5090 bundle artifacts"
+        )
 
 
 def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend: str) -> None:
@@ -141,6 +153,7 @@ def run_bundle_check(
     check_in: bool,
     require_blackwell: bool,
     require_git_tracked: bool,
+    require_real_bundle: bool,
     output_check_json: str,
 ) -> str:
     effective_require_blackwell = require_blackwell or check_in
@@ -150,6 +163,8 @@ def run_bundle_check(
     _assert_files_exist(paths)
     if effective_require_git_tracked:
         _assert_git_tracked(paths, bundle_dir)
+    if require_real_bundle:
+        _assert_real_bundle_dir(bundle_dir)
 
     payload = _load_artifact(str(paths["artifact_json"]))
     selected_backend, _capability = _validate_artifact(payload, expect_backend, effective_require_blackwell)
@@ -187,6 +202,7 @@ def main() -> None:
         check_in=args.check_in,
         require_blackwell=args.require_blackwell,
         require_git_tracked=args.require_git_tracked,
+        require_real_bundle=args.require_real_bundle,
         output_check_json=args.output_check_json,
     )
 

@@ -156,6 +156,7 @@ Examples:
             - [x] Add single-command strict check-in helper (`python -m scripts.run_blackwell_check_in --bundle-dir ... --expect-backend fa4`) that defaults `--output-check-json` to `<bundle-dir>/blackwell_bundle_check.json` and always enforces checker `--check-in` requirements.
             - [ ] Execute `python -m scripts.check_blackwell_evidence_bundle --bundle-dir ... --expect-backend fa4 --check-in` against emitted RTX 5090 artifacts during check-in.
               - [x] Add reproducible local Blackwell evidence fixture bundle (`artifacts/blackwell/sample_bundle/*`) plus regression coverage to keep `scripts.run_blackwell_check_in` receipt output in sync with checked-in artifacts.
+              - [x] Add strict real-artifact guardrails to check-in validation (`--require-real-bundle` in checker + default-on in `scripts.run_blackwell_check_in`, with `--allow-sample-bundle` override for fixture regression tests) so check-in commands fail fast when pointed at sample fixture bundles.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
