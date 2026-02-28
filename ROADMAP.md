@@ -271,9 +271,10 @@ Examples:
                     - [x] Add strict-helper resolved-command artifact output (`--output-check-command-sh`) in `scripts.run_pilot_check_in` so target-GPU operators can persist the exact strict helper invocation (with resolved paths/options) before executing check-in.
                      - [x] Add strict-helper preflight mode (`--preflight`) in `scripts.run_pilot_check_in` so operators can fail fast on missing required artifacts (and optional promotion bundle receipt) before running strict check-in.
                     - [x] Add machine-readable strict-helper preflight receipt output (`--output-preflight-json`) in `scripts.run_pilot_check_in` so operators can check in auditable preflight diagnostics before strict validation.
-                    - [x] Add blocked-check-in markdown receipt output (`--output-blocked-md`) in `scripts.run_pilot_check_in` so failed strict check-in attempts can persist review-friendly blocker evidence (including auto-discovery and preflight failures) during target-GPU check-in.
-                    - [x] Add optional markdown evidence output in `scripts.run_pilot_check_in` (`--output-check-md`) so strict check-in runs can emit a review-friendly summary alongside machine-readable checker receipts.
-                    - [x] Enforce full default pilot-grid coverage in strict check-in validation (all canonical configs present exactly once with expected depth/branch/aspect tuples) so target-GPU check-in fails fast on partial sweeps before promotion.
+                     - [x] Add blocked-check-in markdown receipt output (`--output-blocked-md`) in `scripts.run_pilot_check_in` so failed strict check-in attempts can persist review-friendly blocker evidence (including auto-discovery and preflight failures) during target-GPU check-in.
+                     - [x] Add optional markdown evidence output in `scripts.run_pilot_check_in` (`--output-check-md`) so strict check-in runs can emit a review-friendly summary alongside machine-readable checker receipts.
+                     - [x] Add machine-readable strict-helper auto-discovery receipt output (`--output-discovery-json`) in `scripts.run_pilot_check_in` so target-GPU check-in attempts can persist resolved-bundle/rejection diagnostics for audit.
+                     - [x] Enforce full default pilot-grid coverage in strict check-in validation (all canonical configs present exactly once with expected depth/branch/aspect tuples) so target-GPU check-in fails fast on partial sweeps before promotion.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.
    - [x] Disqualify unstable runs.

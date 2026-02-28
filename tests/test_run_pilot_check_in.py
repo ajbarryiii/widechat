@@ -477,6 +477,94 @@ def test_main_auto_rejects_when_no_real_artifacts_dir_exists(tmp_path, monkeypat
         runner.main()
 
 
+def test_main_auto_writes_discovery_json_on_success(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    older_artifacts = artifacts_root / "run_older"
+    latest_artifacts = artifacts_root / "run_latest"
+    _write_artifact_files(older_artifacts)
+    _write_artifact_files(latest_artifacts)
+    os.utime(older_artifacts / "pilot_ranked_runs.json", (100, 100))
+    os.utime(latest_artifacts / "pilot_ranked_runs.json", (200, 200))
+
+    discovery_json = tmp_path / "receipts" / "pilot_discovery.json"
+    calls = {}
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return 2
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+            "--output-discovery-json",
+            str(discovery_json),
+        ],
+    )
+
+    runner.main()
+
+    payload = json.loads(discovery_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["artifacts_root"] == str(artifacts_root)
+    assert payload["resolved_artifacts_dir"] == str(latest_artifacts)
+    assert payload["error"] == ""
+    assert payload["rejected_candidates"] == []
+    assert calls["ranked_json_path"] == latest_artifacts / "pilot_ranked_runs.json"
+
+
+def test_main_auto_writes_discovery_json_on_failure(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    sample_artifacts = artifacts_root / "sample_run"
+    _write_artifact_files(sample_artifacts)
+    discovery_json = tmp_path / "receipts" / "pilot_discovery.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+            "--output-discovery-json",
+            str(discovery_json),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real pilot artifact bundle found"):
+        runner.main()
+
+    payload = json.loads(discovery_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["artifacts_root"] == str(artifacts_root)
+    assert payload["resolved_artifacts_dir"] == ""
+    assert "no real pilot artifact bundle found" in payload["error"]
+    assert payload["rejected_candidates"] == [
+        {"path": str(sample_artifacts), "reason": "sample path segment"}
+    ]
+
+
+def test_main_rejects_discovery_output_without_auto(monkeypatch, tmp_path):
+    with pytest.raises(RuntimeError, match="--output-discovery-json requires --artifacts-dir=auto"):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "run_pilot_check_in.py",
+                "--artifacts-dir",
+                str(tmp_path / "pilot"),
+                "--output-discovery-json",
+                str(tmp_path / "receipts" / "pilot_discovery.json"),
+            ],
+        )
+        runner.main()
+
+
 def test_main_auto_rejection_writes_blocked_markdown_when_requested(tmp_path, monkeypatch):
     artifacts_root = tmp_path / "artifacts" / "pilot"
     sample_artifacts = artifacts_root / "sample_run"

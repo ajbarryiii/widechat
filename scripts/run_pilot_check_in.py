@@ -95,6 +95,14 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path to write markdown blocker evidence when strict check-in fails",
     )
+    parser.add_argument(
+        "--output-discovery-json",
+        default="",
+        help=(
+            "optional path for machine-readable auto-discovery diagnostics "
+            "(--artifacts-dir=auto only)"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -252,15 +260,23 @@ def _resolve_artifacts_dir(
     finalists_json: str,
     finalists_md: str,
 ) -> Path:
-    if artifacts_dir_arg != "auto":
-        return Path(artifacts_dir_arg)
+    resolved_artifacts_dir, _rejected_dirs = _resolve_artifacts_dir_with_diagnostics(
+        artifacts_dir_arg,
+        artifacts_root_arg,
+        ranked_json,
+        finalists_json,
+        finalists_md,
+    )
+    return resolved_artifacts_dir
 
-    artifacts_root = Path(artifacts_root_arg)
-    if not artifacts_root.is_dir():
-        raise RuntimeError(
-            f"artifacts_root does not exist: {artifacts_root}; pass --artifacts-dir explicitly or emit pilot artifacts first"
-        )
 
+def _discover_artifacts_candidates(
+    *,
+    artifacts_root: Path,
+    ranked_json: str,
+    finalists_json: str,
+    finalists_md: str,
+) -> tuple[list[Path], list[tuple[Path, str]]]:
     discovered_dirs = {
         path.parent
         for path in artifacts_root.rglob(ranked_json)
@@ -281,6 +297,33 @@ def _resolve_artifacts_dir(
         else:
             rejected_dirs.append((discovered_dir, classification))
 
+    candidates.sort(key=lambda path: (path / ranked_json).stat().st_mtime, reverse=True)
+    return candidates, rejected_dirs
+
+
+def _resolve_artifacts_dir_with_diagnostics(
+    artifacts_dir_arg: str,
+    artifacts_root_arg: str,
+    ranked_json: str,
+    finalists_json: str,
+    finalists_md: str,
+) -> tuple[Path, list[tuple[Path, str]]]:
+    if artifacts_dir_arg != "auto":
+        return Path(artifacts_dir_arg), []
+
+    artifacts_root = Path(artifacts_root_arg)
+    if not artifacts_root.is_dir():
+        raise RuntimeError(
+            f"artifacts_root does not exist: {artifacts_root}; pass --artifacts-dir explicitly or emit pilot artifacts first"
+        )
+
+    candidates, rejected_dirs = _discover_artifacts_candidates(
+        artifacts_root=artifacts_root,
+        ranked_json=ranked_json,
+        finalists_json=finalists_json,
+        finalists_md=finalists_md,
+    )
+
     if not candidates:
         raise RuntimeError(
             _render_no_real_bundle_error(
@@ -290,8 +333,31 @@ def _resolve_artifacts_dir(
             )
         )
 
-    candidates.sort(key=lambda path: (path / ranked_json).stat().st_mtime, reverse=True)
-    return candidates[0]
+    return candidates[0], rejected_dirs
+
+
+def _write_discovery_report(
+    path: str,
+    *,
+    artifacts_root: Path,
+    ok: bool,
+    resolved_artifacts_dir: Path | None,
+    rejected_dirs: list[tuple[Path, str]],
+    error: str,
+) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "artifacts_root": str(artifacts_root),
+        "ok": ok,
+        "resolved_artifacts_dir": str(resolved_artifacts_dir) if resolved_artifacts_dir is not None else "",
+        "rejected_candidates": [
+            {"path": str(rejected_path), "reason": reason}
+            for rejected_path, reason in rejected_dirs
+        ],
+        "error": error,
+    }
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _resolve_bundle_json_path(
@@ -392,14 +458,58 @@ def _run_preflight(
 
 def main() -> None:
     args = _parse_args()
+    if args.output_discovery_json and args.artifacts_dir != "auto":
+        raise RuntimeError("--output-discovery-json requires --artifacts-dir=auto")
     try:
-        artifacts_dir = _resolve_artifacts_dir(
-            args.artifacts_dir,
-            args.artifacts_root,
-            args.ranked_json,
-            args.finalists_json,
-            args.finalists_md,
-        )
+        if args.artifacts_dir == "auto":
+            artifacts_root = Path(args.artifacts_root)
+            try:
+                artifacts_dir, rejected_dirs = _resolve_artifacts_dir_with_diagnostics(
+                    args.artifacts_dir,
+                    args.artifacts_root,
+                    args.ranked_json,
+                    args.finalists_json,
+                    args.finalists_md,
+                )
+            except RuntimeError as exc:
+                if args.output_discovery_json:
+                    _candidates, rejected_dirs = (
+                        _discover_artifacts_candidates(
+                            artifacts_root=artifacts_root,
+                            ranked_json=args.ranked_json,
+                            finalists_json=args.finalists_json,
+                            finalists_md=args.finalists_md,
+                        )
+                        if artifacts_root.is_dir()
+                        else ([], [])
+                    )
+                    _write_discovery_report(
+                        args.output_discovery_json,
+                        artifacts_root=artifacts_root,
+                        ok=False,
+                        resolved_artifacts_dir=None,
+                        rejected_dirs=rejected_dirs,
+                        error=str(exc),
+                    )
+                raise
+
+            if args.output_discovery_json:
+                _write_discovery_report(
+                    args.output_discovery_json,
+                    artifacts_root=artifacts_root,
+                    ok=True,
+                    resolved_artifacts_dir=artifacts_dir,
+                    rejected_dirs=rejected_dirs,
+                    error="",
+                )
+        else:
+            artifacts_dir = _resolve_artifacts_dir(
+                args.artifacts_dir,
+                args.artifacts_root,
+                args.ranked_json,
+                args.finalists_json,
+                args.finalists_md,
+            )
         ranked_json = artifacts_dir / args.ranked_json
         finalists_json = artifacts_dir / args.finalists_json
         finalists_md = artifacts_dir / args.finalists_md
