@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -209,3 +210,35 @@ def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
     assert "## Stage 2 Finalists" in md
     assert "`--depth 12 --n-branches 1 --aspect-ratio 64`" in md
     assert "`--depth 6 --n-branches 2 --aspect-ratio 128`" not in md
+
+
+def test_sample_artifacts_stay_in_sync_with_pilot_promote(tmp_path, monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root)
+    ranked_runs_json = repo_root / "artifacts" / "pilot" / "sample_ranked_runs.json"
+    expected_finalists_json = repo_root / "artifacts" / "pilot" / "sample_stage2_finalists.json"
+    expected_finalists_md = repo_root / "artifacts" / "pilot" / "sample_stage2_finalists.md"
+
+    generated_json = tmp_path / "generated_finalists.json"
+    generated_md = tmp_path / "generated_finalists.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_promote.py",
+            "--input-json",
+            str(ranked_runs_json.relative_to(repo_root)),
+            "--max-finalists",
+            "3",
+            "--output-json",
+            str(generated_json),
+            "--output-md",
+            str(generated_md),
+        ],
+    )
+    pilot_promote.main()
+
+    assert json.loads(generated_json.read_text(encoding="utf-8")) == json.loads(
+        expected_finalists_json.read_text(encoding="utf-8")
+    )
+    assert generated_md.read_text(encoding="utf-8") == expected_finalists_md.read_text(encoding="utf-8")
