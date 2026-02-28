@@ -1,11 +1,16 @@
 import json
 import os
 import subprocess
+import hashlib
 
 import pytest
 
 from scripts import check_pilot_sweep_artifacts as checker
 from scripts import pilot_promote
+
+
+def _sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _write_artifacts(base_dir):
@@ -149,6 +154,11 @@ def test_main_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
         "require_real_input": False,
         "require_git_tracked": False,
         "check_in": False,
+        "artifact_sha256": {
+            "ranked_json": _sha256(ranked_json),
+            "finalists_json": _sha256(finalists_json),
+            "finalists_md": _sha256(finalists_md),
+        },
     }
 
 

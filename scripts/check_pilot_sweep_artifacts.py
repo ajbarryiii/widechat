@@ -8,6 +8,7 @@ python -m scripts.check_pilot_sweep_artifacts \
 """
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -331,6 +332,9 @@ def _write_check_receipt(
     require_git_tracked: bool,
     check_in: bool,
 ) -> None:
+    def _sha256(path_obj: Path) -> str:
+        return hashlib.sha256(path_obj.read_bytes()).hexdigest()
+
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "status": "ok",
@@ -342,6 +346,11 @@ def _write_check_receipt(
         "require_real_input": require_real_input,
         "require_git_tracked": require_git_tracked,
         "check_in": check_in,
+        "artifact_sha256": {
+            "ranked_json": _sha256(ranked_json_path),
+            "finalists_json": _sha256(finalists_json_path),
+            "finalists_md": _sha256(finalists_md_path),
+        },
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
