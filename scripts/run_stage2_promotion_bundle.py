@@ -6,6 +6,7 @@ python -m scripts.run_stage2_promotion_bundle --input-json artifacts/pilot/sampl
 
 import argparse
 import json
+import shlex
 from pathlib import Path
 
 from nanochat.pilot_sweep import format_finalists_summary, select_finalists
@@ -120,10 +121,14 @@ def _write_runbook_md(
     output_check_json: str,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    quoted_input_json = shlex.quote(input_json)
+    quoted_output_dir = shlex.quote(output_dir)
+    check_json_path = output_check_json or str(Path(output_dir) / "pilot_bundle_check.json")
+    quoted_check_json = shlex.quote(check_json_path)
     command_lines = [
         "python -m scripts.run_stage2_promotion_bundle \\",
-        f"  --input-json {input_json} \\",
-        f"  --output-dir {output_dir} \\",
+        f"  --input-json {quoted_input_json} \\",
+        f"  --output-dir {quoted_output_dir} \\",
         f"  --min-finalists {min_finalists} \\",
         f"  --max-finalists {max_finalists}",
     ]
@@ -152,11 +157,11 @@ def _write_runbook_md(
         "## Check-in command",
         "```bash",
         "python -m scripts.run_pilot_check_in \\",
-        f"  --artifacts-dir {output_dir} \\",
-        f"  --ranked-json {input_json} \\",
-        f"  --finalists-json {finalists_json} \\",
-        f"  --finalists-md {finalists_md} \\",
-        f"  --output-check-json {Path(output_dir) / 'pilot_bundle_check.json'}",
+        f"  --artifacts-dir {quoted_output_dir} \\",
+        f"  --ranked-json {quoted_input_json} \\",
+        f"  --finalists-json {shlex.quote(str(finalists_json))} \\",
+        f"  --finalists-md {shlex.quote(str(finalists_md))} \\",
+        f"  --output-check-json {quoted_check_json}",
         "```",
         "",
     ]
