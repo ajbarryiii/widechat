@@ -160,9 +160,9 @@ Examples:
 ### Benchmark tests
 - [ ] Throughput benchmark at fixed `N`, `T`, and total batch.
   - [ ] Compare `12x1` vs `2x5` vs `1x10`.
-- [ ] Track benchmark metrics.
+- [x] Track benchmark metrics.
   - [x] `train/tok_per_sec`
-  - [ ] `train/mfu`
+  - [x] `train/mfu`
   - [x] Peak memory.
 
 ## Experiment Plan (Two-Stage)

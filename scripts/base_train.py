@@ -621,6 +621,7 @@ get_report().log(section="Base model training", data=[
         "CORE metric estimate": results.get("core_metric", None),
         "Final train/tok_per_sec": tok_per_sec,
         "Average train/tok_per_sec": avg_tok_per_sec,
+        "Final train/mfu": mfu,
         "MFU %": f"{mfu:.2f}%",
         "Total training flops": f"{flops_so_far:e}",
         "Total training time": f"{total_training_time/60:.2f}m",
