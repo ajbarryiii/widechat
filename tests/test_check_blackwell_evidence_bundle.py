@@ -294,3 +294,34 @@ def test_main_writes_machine_readable_check_report(tmp_path, monkeypatch):
     assert payload["check_in"] is True
     assert payload["require_blackwell"] is True
     assert payload["require_git_tracked"] is True
+    assert payload["require_real_bundle"] is False
+
+
+def test_main_check_report_includes_require_real_bundle(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    report_path = bundle_dir / "check_report_real_bundle.json"
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--expect-backend",
+            "fa4",
+            "--check-in",
+            "--require-real-bundle",
+            "--output-check-json",
+            str(report_path),
+        ],
+    )
+
+    checker.main()
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["require_real_bundle"] is True

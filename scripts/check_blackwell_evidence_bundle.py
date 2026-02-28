@@ -132,6 +132,7 @@ def _write_check_report(
     check_in: bool,
     require_blackwell: bool,
     require_git_tracked: bool,
+    require_real_bundle: bool,
 ) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -142,6 +143,7 @@ def _write_check_report(
         "check_in": check_in,
         "require_blackwell": require_blackwell,
         "require_git_tracked": require_git_tracked,
+        "require_real_bundle": require_real_bundle,
     }
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -189,6 +191,7 @@ def run_bundle_check(
             check_in=check_in,
             require_blackwell=effective_require_blackwell,
             require_git_tracked=effective_require_git_tracked,
+            require_real_bundle=require_real_bundle,
         )
 
     return selected_backend
