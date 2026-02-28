@@ -21,6 +21,35 @@ def test_load_ranked_runs_rejects_empty_list(tmp_path):
         pilot_promote._load_ranked_runs(str(path))
 
 
+def test_load_ranked_runs_rejects_non_object_row(tmp_path):
+    path = tmp_path / "invalid-row.json"
+    path.write_text(json.dumps({"ranked_runs": ["bad"]}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"ranked_runs\[0\] must be a JSON object"):
+        pilot_promote._load_ranked_runs(str(path))
+
+
+def test_load_ranked_runs_rejects_missing_required_fields(tmp_path):
+    path = tmp_path / "missing-fields.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ranked_runs": [
+                    {
+                        "config": "12x1",
+                        "depth": 12,
+                        "n_branches": 1,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"ranked_runs\[0\] missing positive integer field: aspect_ratio"):
+        pilot_promote._load_ranked_runs(str(path))
+
+
 def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
     input_path = tmp_path / "pilot.json"
     output_json = tmp_path / "finalists.json"

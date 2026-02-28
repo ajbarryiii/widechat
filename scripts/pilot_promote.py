@@ -28,7 +28,45 @@ def _load_ranked_runs(path: str) -> list[dict[str, int | float | bool | str | No
         raise ValueError("input JSON must include a ranked_runs list")
     if not ranked_runs:
         raise ValueError("ranked_runs must not be empty")
+
+    for index, row in enumerate(ranked_runs):
+        if not isinstance(row, dict):
+            raise ValueError(f"ranked_runs[{index}] must be a JSON object")
+        _validate_ranked_run_row(row, index=index)
     return ranked_runs
+
+
+def _validate_ranked_run_row(
+    row: dict[str, int | float | bool | str | None],
+    *,
+    index: int,
+) -> None:
+    _require_str_field(row, "config", index=index)
+    _require_positive_int_field(row, "depth", index=index)
+    _require_positive_int_field(row, "n_branches", index=index)
+    _require_positive_int_field(row, "aspect_ratio", index=index)
+
+
+def _require_str_field(
+    row: dict[str, int | float | bool | str | None],
+    key: str,
+    *,
+    index: int,
+) -> None:
+    value = row.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"ranked_runs[{index}] missing non-empty string field: {key}")
+
+
+def _require_positive_int_field(
+    row: dict[str, int | float | bool | str | None],
+    key: str,
+    *,
+    index: int,
+) -> None:
+    value = row.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"ranked_runs[{index}] missing positive integer field: {key}")
 
 
 def main() -> None:

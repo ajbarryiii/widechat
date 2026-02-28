@@ -197,8 +197,10 @@ Examples:
 
 ### Stage 2: Long runs (top candidates only)
 - [ ] Promote top 2-3 configs from pilots.
-   - [x] Add promotion helper (`python -m scripts.pilot_promote --input-json ...`) to select qualified finalists and emit Stage 2 depth/branch flags from pilot ranking artifacts.
-   - [ ] Run promotion helper on real pilot output JSON and record selected finalist configs in repo artifacts.
+    - [x] Add promotion helper (`python -m scripts.pilot_promote --input-json ...`) to select qualified finalists and emit Stage 2 depth/branch flags from pilot ranking artifacts.
+    - [ ] Promotion artifact robustness + execution.
+      - [x] Add ranked-run artifact schema validation in `scripts/pilot_promote.py` so malformed pilot JSON fails fast before finalist selection.
+      - [ ] Run promotion helper on real pilot output JSON and record selected finalist configs in repo artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
 
