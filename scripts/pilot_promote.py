@@ -45,6 +45,27 @@ def _validate_ranked_run_row(
     _require_positive_int_field(row, "depth", index=index)
     _require_positive_int_field(row, "n_branches", index=index)
     _require_positive_int_field(row, "aspect_ratio", index=index)
+    _require_nonnegative_number_field(row, "selected_tok_per_sec", index=index)
+    _require_number_field(row, "min_val_bpb", index=index)
+    _require_positive_int_field(row, "token_budget", index=index)
+
+    qualified = _require_bool_field(row, "qualified", index=index)
+    rank = _require_optional_positive_int_field(row, "rank", index=index)
+    disqualify_reason = row.get("disqualify_reason")
+
+    if qualified and rank is None:
+        raise ValueError(f"ranked_runs[{index}] qualified row must include a positive integer rank")
+    if not qualified and rank is not None:
+        raise ValueError(f"ranked_runs[{index}] disqualified row must set rank to null")
+
+    if qualified:
+        if disqualify_reason is not None:
+            raise ValueError(f"ranked_runs[{index}] qualified row must set disqualify_reason to null")
+    else:
+        if not isinstance(disqualify_reason, str) or not disqualify_reason:
+            raise ValueError(
+                f"ranked_runs[{index}] disqualified row must include non-empty disqualify_reason"
+            )
 
 
 def _require_str_field(
@@ -67,6 +88,56 @@ def _require_positive_int_field(
     value = row.get(key)
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"ranked_runs[{index}] missing positive integer field: {key}")
+
+
+def _require_bool_field(
+    row: dict[str, int | float | bool | str | None],
+    key: str,
+    *,
+    index: int,
+) -> bool:
+    value = row.get(key)
+    if not isinstance(value, bool):
+        raise ValueError(f"ranked_runs[{index}] missing boolean field: {key}")
+    return value
+
+
+def _require_number_field(
+    row: dict[str, int | float | bool | str | None],
+    key: str,
+    *,
+    index: int,
+) -> float:
+    value = row.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"ranked_runs[{index}] missing numeric field: {key}")
+    return float(value)
+
+
+def _require_nonnegative_number_field(
+    row: dict[str, int | float | bool | str | None],
+    key: str,
+    *,
+    index: int,
+) -> float:
+    value = _require_number_field(row, key, index=index)
+    if value < 0:
+        raise ValueError(f"ranked_runs[{index}] field must be >= 0: {key}")
+    return value
+
+
+def _require_optional_positive_int_field(
+    row: dict[str, int | float | bool | str | None],
+    key: str,
+    *,
+    index: int,
+) -> int | None:
+    value = row.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"ranked_runs[{index}] field must be null or a positive integer: {key}")
+    return value
 
 
 def main() -> None:

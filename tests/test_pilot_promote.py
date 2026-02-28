@@ -50,6 +50,89 @@ def test_load_ranked_runs_rejects_missing_required_fields(tmp_path):
         pilot_promote._load_ranked_runs(str(path))
 
 
+def test_load_ranked_runs_rejects_missing_qualified_field(tmp_path):
+    path = tmp_path / "missing-qualified.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ranked_runs": [
+                    {
+                        "config": "12x1",
+                        "depth": 12,
+                        "n_branches": 1,
+                        "aspect_ratio": 64,
+                        "selected_tok_per_sec": 1000,
+                        "min_val_bpb": 4.1,
+                        "token_budget": 250000000,
+                        "rank": 1,
+                        "disqualify_reason": None,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"ranked_runs\[0\] missing boolean field: qualified"):
+        pilot_promote._load_ranked_runs(str(path))
+
+
+def test_load_ranked_runs_rejects_qualified_row_without_rank(tmp_path):
+    path = tmp_path / "qualified-without-rank.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ranked_runs": [
+                    {
+                        "config": "12x1",
+                        "depth": 12,
+                        "n_branches": 1,
+                        "aspect_ratio": 64,
+                        "selected_tok_per_sec": 1000,
+                        "min_val_bpb": 4.1,
+                        "token_budget": 250000000,
+                        "qualified": True,
+                        "rank": None,
+                        "disqualify_reason": None,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"qualified row must include a positive integer rank"):
+        pilot_promote._load_ranked_runs(str(path))
+
+
+def test_load_ranked_runs_rejects_disqualified_row_without_reason(tmp_path):
+    path = tmp_path / "disqualified-without-reason.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ranked_runs": [
+                    {
+                        "config": "2x5",
+                        "depth": 2,
+                        "n_branches": 5,
+                        "aspect_ratio": 384,
+                        "selected_tok_per_sec": 900,
+                        "min_val_bpb": 4.3,
+                        "token_budget": 250000000,
+                        "qualified": False,
+                        "rank": None,
+                        "disqualify_reason": "",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"disqualified row must include non-empty disqualify_reason"):
+        pilot_promote._load_ranked_runs(str(path))
+
+
 def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
     input_path = tmp_path / "pilot.json"
     output_json = tmp_path / "finalists.json"
