@@ -162,3 +162,34 @@ def test_main_auto_rejects_when_no_real_artifacts_dir_exists(tmp_path, monkeypat
 
     with pytest.raises(RuntimeError, match="no real pilot artifact bundle found"):
         runner.main()
+
+
+def test_main_auto_rejection_error_lists_candidate_reasons(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    sample_artifacts = artifacts_root / "sample_run"
+    incomplete_artifacts = artifacts_root / "run_incomplete"
+    _write_artifact_files(sample_artifacts)
+    incomplete_artifacts.mkdir(parents=True, exist_ok=True)
+    (incomplete_artifacts / "pilot_ranked_runs.json").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        runner.main()
+
+    message = str(exc_info.value)
+    assert "rejected 2 candidate bundle(s)" in message
+    assert f"{sample_artifacts}: sample path segment" in message
+    assert (
+        f"{incomplete_artifacts}: missing files: stage2_finalists.json, stage2_finalists.md"
+        in message
+    )

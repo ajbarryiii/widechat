@@ -50,15 +50,36 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _is_real_artifacts_dir(
+def _classify_artifacts_dir(
     artifacts_dir: Path,
     ranked_json: str,
     finalists_json: str,
     finalists_md: str,
-) -> bool:
-    if any("sample" in part for part in artifacts_dir.parts):
-        return False
-    return all((artifacts_dir / name).is_file() for name in (ranked_json, finalists_json, finalists_md))
+) -> str:
+    if any("sample" in part.lower() for part in artifacts_dir.parts):
+        return "sample path segment"
+
+    missing_files = [name for name in (ranked_json, finalists_json, finalists_md) if not (artifacts_dir / name).is_file()]
+    if missing_files:
+        return f"missing files: {', '.join(missing_files)}"
+    return "real"
+
+
+def _render_no_real_bundle_error(
+    *,
+    artifacts_root: Path,
+    ranked_json: str,
+    rejected_dirs: list[tuple[Path, str]],
+) -> str:
+    lines = [
+        f"no real pilot artifact bundle found under {artifacts_root}; run scripts.pilot_sweep on target GPU(s) first",
+        f"discovery searched for '{ranked_json}' files and rejected {len(rejected_dirs)} candidate bundle(s)",
+    ]
+    for rejected_path, reason in rejected_dirs[:5]:
+        lines.append(f"- {rejected_path}: {reason}")
+    if len(rejected_dirs) > 5:
+        lines.append(f"- ... {len(rejected_dirs) - 5} more candidate bundle(s) omitted")
+    return "\n".join(lines)
 
 
 def _resolve_artifacts_dir(
@@ -77,14 +98,28 @@ def _resolve_artifacts_dir(
             f"artifacts_root does not exist: {artifacts_root}; pass --artifacts-dir explicitly or emit pilot artifacts first"
         )
 
-    candidates = [
-        path.parent
-        for path in artifacts_root.rglob(ranked_json)
-        if _is_real_artifacts_dir(path.parent, ranked_json, finalists_json, finalists_md)
-    ]
+    discovered_dirs = sorted({path.parent for path in artifacts_root.rglob(ranked_json)})
+    candidates = []
+    rejected_dirs = []
+    for discovered_dir in discovered_dirs:
+        classification = _classify_artifacts_dir(
+            discovered_dir,
+            ranked_json,
+            finalists_json,
+            finalists_md,
+        )
+        if classification == "real":
+            candidates.append(discovered_dir)
+        else:
+            rejected_dirs.append((discovered_dir, classification))
+
     if not candidates:
         raise RuntimeError(
-            f"no real pilot artifact bundle found under {artifacts_root}; run scripts.pilot_sweep on target GPU(s) first"
+            _render_no_real_bundle_error(
+                artifacts_root=artifacts_root,
+                ranked_json=ranked_json,
+                rejected_dirs=rejected_dirs,
+            )
         )
 
     candidates.sort(key=lambda path: (path / ranked_json).stat().st_mtime, reverse=True)
