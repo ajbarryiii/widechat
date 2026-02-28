@@ -146,6 +146,8 @@ Examples:
     - [x] Add check-in-ready evidence markdown output in `scripts.validate_blackwell_smoke_artifact` (`--output-evidence-md`) so one-device runs can record canonical `selected=...` plus device metadata in a reviewable artifact.
     - [x] Add single-command Blackwell bundle runner (`python -m scripts.run_blackwell_smoke_bundle --output-dir ...`) that executes smoke capture + artifact validation + evidence markdown emission in one step.
     - [ ] Execute the bundle runner on target RTX 5090 and check in emitted evidence artifacts.
+      - [x] Add runbook artifact output (`--output-runbook-md`) in `scripts.run_blackwell_smoke_bundle` so RTX 5090 operators can persist the exact execution/check-in checklist with smoke artifacts.
+      - [ ] Execute the documented runbook flow on target RTX 5090 and check in emitted evidence artifacts.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)

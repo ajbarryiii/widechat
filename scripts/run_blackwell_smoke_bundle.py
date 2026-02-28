@@ -26,14 +26,50 @@ from scripts.validate_blackwell_smoke_artifact import (
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Blackwell smoke artifact bundle")
-    parser.add_argument("--output-dir", required=True, help="artifact directory for smoke JSON/status/evidence")
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="artifact directory for smoke JSON/status/evidence",
+    )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4")
     parser.add_argument(
         "--output-evidence-md",
         default="",
         help="optional markdown path (defaults to <output-dir>/blackwell_smoke_evidence.md)",
     )
+    parser.add_argument(
+        "--output-runbook-md",
+        default="",
+        help="optional markdown path for a check-in runbook (defaults to <output-dir>/blackwell_smoke_runbook.md)",
+    )
     return parser.parse_args()
+
+
+def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evidence_md: str) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Blackwell Smoke Bundle Runbook",
+        "",
+        "## Command",
+        "```bash",
+        "python -m scripts.run_blackwell_smoke_bundle \\",
+        f"  --output-dir {output_dir} \\",
+        f"  --expect-backend {expect_backend}",
+        "```",
+        "",
+        "## Expected outputs",
+        f"- `{output_dir}/flash_backend_smoke.json`",
+        f"- `{output_dir}/flash_backend_status.log`",
+        f"- `{evidence_md}`",
+        "",
+        "## Check-in checklist",
+        f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
+        "- Verify evidence markdown includes device metadata and `status_line_ok: true`.",
+        "- Commit the emitted evidence artifacts from this run.",
+        "",
+    ]
+    output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def main() -> None:
@@ -42,6 +78,14 @@ def main() -> None:
 
     artifact_json, status_line_path = _resolve_output_paths("", "", args.output_dir)
     evidence_md = args.output_evidence_md or str(Path(args.output_dir) / "blackwell_smoke_evidence.md")
+    runbook_md = args.output_runbook_md or str(Path(args.output_dir) / "blackwell_smoke_runbook.md")
+
+    _write_runbook_markdown(
+        path=runbook_md,
+        output_dir=args.output_dir,
+        expect_backend=args.expect_backend,
+        evidence_md=evidence_md,
+    )
 
     status_line = backend_status_message()
     print(status_line)
@@ -77,7 +121,8 @@ def main() -> None:
         f"selected={selected_backend} "
         f"artifact_json={artifact_json} "
         f"status_line={status_line_path} "
-        f"evidence_md={evidence_md}"
+        f"evidence_md={evidence_md} "
+        f"runbook_md={runbook_md}"
     )
 
 
