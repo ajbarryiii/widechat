@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from scripts import run_stage2_promotion_bundle as bundle
+from scripts import pilot_promote
 
 
 def test_main_writes_stage2_finalists_bundle(tmp_path, monkeypatch, capsys):
@@ -72,6 +73,7 @@ def test_main_writes_stage2_finalists_bundle(tmp_path, monkeypatch, capsys):
     finalists_md = output_dir / "stage2_finalists.md"
     payload = json.loads(finalists_json.read_text(encoding="utf-8"))
     assert payload["source"] == str(input_json)
+    assert payload["source_sha256"] == pilot_promote._stable_json_sha256(ranked_runs)
     assert payload["max_finalists"] == 1
     assert [row["config"] for row in payload["selected_finalists"]] == ["4x3"]
 

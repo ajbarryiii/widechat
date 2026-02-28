@@ -5,6 +5,7 @@ python -m scripts.pilot_promote --input-json artifacts/pilot_ranked.json --outpu
 """
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -31,16 +32,29 @@ def _is_sample_input_path(path: str) -> bool:
     return name.startswith("sample")
 
 
-def _load_ranked_runs(
+def _stable_json_sha256(payload: object) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _load_ranked_payload(
     path: str,
     *,
     require_real_input: bool = False,
-) -> list[dict[str, int | float | bool | str | None]]:
+) -> dict[str, object]:
     with open(path, "r", encoding="utf-8") as f:
         payload = json.load(f)
 
+    if not isinstance(payload, dict):
+        raise ValueError("input JSON must be a JSON object")
+
     if require_real_input and (_is_sample_input_path(path) or payload.get("is_sample") is True):
         raise ValueError("--require-real-input rejects sample/fixture ranked-run artifacts")
+
+    return payload
+
+
+def _load_ranked_runs_from_payload(payload: dict[str, object]) -> list[dict[str, int | float | bool | str | None]]:
 
     ranked_runs = payload.get("ranked_runs")
     if not isinstance(ranked_runs, list):
@@ -53,6 +67,25 @@ def _load_ranked_runs(
             raise ValueError(f"ranked_runs[{index}] must be a JSON object")
         _validate_ranked_run_row(row, index=index)
     return ranked_runs
+
+
+def _load_ranked_runs(
+    path: str,
+    *,
+    require_real_input: bool = False,
+) -> list[dict[str, int | float | bool | str | None]]:
+    payload = _load_ranked_payload(path, require_real_input=require_real_input)
+    return _load_ranked_runs_from_payload(payload)
+
+
+def _load_ranked_runs_with_source_hash(
+    path: str,
+    *,
+    require_real_input: bool = False,
+) -> tuple[list[dict[str, int | float | bool | str | None]], str]:
+    payload = _load_ranked_payload(path, require_real_input=require_real_input)
+    ranked_runs = _load_ranked_runs_from_payload(payload)
+    return ranked_runs, _stable_json_sha256(payload)
 
 
 def _validate_ranked_run_row(
@@ -185,7 +218,10 @@ def _validate_stage2_finalists(
 
 def main() -> None:
     args = _parse_args()
-    ranked_runs = _load_ranked_runs(args.input_json, require_real_input=args.require_real_input)
+    ranked_runs, source_sha256 = _load_ranked_runs_with_source_hash(
+        args.input_json,
+        require_real_input=args.require_real_input,
+    )
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
     _validate_stage2_finalists(
@@ -206,6 +242,7 @@ def main() -> None:
     if args.output_json:
         payload = {
             "source": args.input_json,
+            "source_sha256": source_sha256,
             "max_finalists": args.max_finalists,
             "selected_finalists": finalists,
         }

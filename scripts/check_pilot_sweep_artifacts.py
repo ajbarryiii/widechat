@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from nanochat.pilot_sweep import select_finalists
-from scripts.pilot_promote import _load_ranked_runs
+from scripts.pilot_promote import _load_ranked_runs_with_source_hash
 
 
 def _parse_args() -> argparse.Namespace:
@@ -80,6 +80,11 @@ def _load_finalists_payload(path: Path) -> dict[str, object]:
     source = payload.get("source")
     if not isinstance(source, str) or not source:
         raise RuntimeError(f"finalists JSON missing non-empty source path: {path}")
+    source_sha256 = payload.get("source_sha256")
+    if not isinstance(source_sha256, str) or len(source_sha256) != 64:
+        raise RuntimeError(f"finalists JSON missing source_sha256 digest: {path}")
+    if any(ch not in "0123456789abcdef" for ch in source_sha256):
+        raise RuntimeError(f"finalists JSON source_sha256 must be lowercase hex: {path}")
     max_finalists = payload.get("max_finalists")
     if isinstance(max_finalists, bool) or not isinstance(max_finalists, int) or max_finalists <= 0:
         raise RuntimeError(f"finalists JSON missing positive integer max_finalists: {path}")
@@ -107,6 +112,22 @@ def _assert_finalists_source_matches_ranking(
         raise RuntimeError(
             "finalists JSON source does not match --ranked-json: "
             f"source={source} ranked_json={ranked_json_path}"
+        )
+
+
+def _assert_finalists_source_hash_matches_ranking(
+    *,
+    finalists_payload: dict[str, object],
+    finalists_json_path: Path,
+    ranked_source_sha256: str,
+) -> None:
+    source_sha256 = finalists_payload.get("source_sha256")
+    if not isinstance(source_sha256, str) or not source_sha256:
+        raise RuntimeError(f"finalists JSON missing source_sha256 digest: {finalists_json_path}")
+    if source_sha256 != ranked_source_sha256:
+        raise RuntimeError(
+            "finalists JSON source_sha256 does not match --ranked-json contents: "
+            f"source_sha256={source_sha256} ranked_sha256={ranked_source_sha256}"
         )
 
 
@@ -201,7 +222,10 @@ def run_pilot_bundle_check(
         "finalists_md": finalists_md_path,
     }
     _assert_files_exist(paths)
-    ranked_runs = _load_ranked_runs(str(paths["ranked_json"]), require_real_input=effective_require_real_input)
+    ranked_runs, ranked_source_sha256 = _load_ranked_runs_with_source_hash(
+        str(paths["ranked_json"]),
+        require_real_input=effective_require_real_input,
+    )
     if effective_require_git_tracked:
         _assert_git_tracked(paths)
 
@@ -210,6 +234,11 @@ def run_pilot_bundle_check(
         finalists_payload=finalists_payload,
         finalists_json_path=paths["finalists_json"],
         ranked_json_path=paths["ranked_json"],
+    )
+    _assert_finalists_source_hash_matches_ranking(
+        finalists_payload=finalists_payload,
+        finalists_json_path=paths["finalists_json"],
+        ranked_source_sha256=ranked_source_sha256,
     )
     expected_finalists = _assert_finalists_match_ranking(
         ranked_runs=ranked_runs,

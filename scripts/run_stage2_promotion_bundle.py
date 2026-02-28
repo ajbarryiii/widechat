@@ -10,7 +10,7 @@ from pathlib import Path
 
 from nanochat.pilot_sweep import format_finalists_summary, select_finalists
 from scripts.check_pilot_sweep_artifacts import run_pilot_bundle_check
-from scripts.pilot_promote import _load_ranked_runs, _validate_stage2_finalists
+from scripts.pilot_promote import _load_ranked_runs_with_source_hash, _validate_stage2_finalists
 
 
 def _parse_args() -> argparse.Namespace:
@@ -70,12 +70,14 @@ def _resolve_output_paths(output_dir: str, output_json: str, output_md: str) -> 
 def _write_finalists_json(
     path: Path,
     source: str,
+    source_sha256: str,
     max_finalists: int,
     finalists: list[dict[str, int | float | bool | str | None]],
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "source": source,
+        "source_sha256": source_sha256,
         "max_finalists": max_finalists,
         "selected_finalists": finalists,
     }
@@ -164,7 +166,10 @@ def _write_runbook_md(
 def main() -> None:
     args = _parse_args()
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
-    ranked_runs = _load_ranked_runs(args.input_json, require_real_input=args.require_real_input)
+    ranked_runs, source_sha256 = _load_ranked_runs_with_source_hash(
+        args.input_json,
+        require_real_input=args.require_real_input,
+    )
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
     _validate_stage2_finalists(
@@ -185,6 +190,7 @@ def main() -> None:
     _write_finalists_json(
         path=finalists_json,
         source=args.input_json,
+        source_sha256=source_sha256,
         max_finalists=args.max_finalists,
         finalists=finalists,
     )

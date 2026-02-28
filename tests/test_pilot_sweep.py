@@ -592,6 +592,9 @@ def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch)
     pilot_sweep_script.main()
 
     finalists_payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    assert finalists_payload["source"] == str(tmp_path / "pilot_ranked_runs.json")
+    assert isinstance(finalists_payload["source_sha256"], str)
+    assert len(finalists_payload["source_sha256"]) == 64
     assert finalists_payload["max_finalists"] == 2
     assert [row["config"] for row in finalists_payload["selected_finalists"]] == ["4x3", "6x2"]
 

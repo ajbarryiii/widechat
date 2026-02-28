@@ -262,6 +262,8 @@ def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
     assert "--depth 6 --n-branches 2 --aspect-ratio 128" not in stdout
 
     payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["source"] == str(input_path)
+    assert payload["source_sha256"] == pilot_promote._stable_json_sha256({"ranked_runs": ranked_runs})
     assert payload["max_finalists"] == 1
     assert [row["config"] for row in payload["selected_finalists"]] == ["12x1"]
 

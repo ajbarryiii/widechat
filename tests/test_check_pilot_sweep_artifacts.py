@@ -4,6 +4,7 @@ import subprocess
 import pytest
 
 from scripts import check_pilot_sweep_artifacts as checker
+from scripts import pilot_promote
 
 
 def _write_artifacts(base_dir):
@@ -49,13 +50,16 @@ def _write_artifacts(base_dir):
             "disqualify_reason": "slow>5.0%",
         },
     ]
-    ranked_json.write_text(json.dumps({"ranked_runs": ranked_runs}), encoding="utf-8")
+    ranked_payload = {"ranked_runs": ranked_runs}
+    ranked_json.write_text(json.dumps(ranked_payload), encoding="utf-8")
+    ranked_source_sha256 = pilot_promote._stable_json_sha256(ranked_payload)
 
     selected_finalists = ranked_runs[:2]
     finalists_json.write_text(
         json.dumps(
             {
                 "source": str(ranked_json),
+                "source_sha256": ranked_source_sha256,
                 "max_finalists": 2,
                 "selected_finalists": selected_finalists,
             }
@@ -144,6 +148,52 @@ def test_main_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
         "require_git_tracked": False,
         "check_in": False,
     }
+
+
+def test_main_rejects_missing_source_sha256(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    payload.pop("source_sha256")
+    finalists_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="finalists JSON missing source_sha256 digest"):
+        checker.main()
+
+
+def test_main_rejects_source_sha256_mismatch(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    payload["source_sha256"] = "0" * 64
+    finalists_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="source_sha256 does not match --ranked-json contents"):
+        checker.main()
 
 
 def test_main_rejects_finalists_mismatch(tmp_path, monkeypatch):
@@ -274,6 +324,7 @@ def test_run_bundle_check_allows_sample_input_override_in_check_in_mode(tmp_path
 
     finalists_payload = json.loads(finalists_json.read_text(encoding="utf-8"))
     finalists_payload["source"] = str(ranked_json)
+    finalists_payload["source_sha256"] = pilot_promote._stable_json_sha256(payload)
     finalists_json.write_text(json.dumps(finalists_payload), encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)

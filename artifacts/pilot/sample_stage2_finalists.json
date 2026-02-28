@@ -1,5 +1,6 @@
 {
   "source": "artifacts/pilot/sample_ranked_runs.json",
+  "source_sha256": "89d1dedd0d6923e68000a3cca81f9ed90a921db7469a01f974b73abf4fcab10c",
   "max_finalists": 3,
   "selected_finalists": [
     {

@@ -5,6 +5,7 @@ python -m scripts.pilot_sweep --device-type cuda --total-batch-size 524288 --dev
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -84,6 +85,11 @@ def _sanitize_label(label: str) -> str:
             safe.append("-")
     slug = "".join(safe).strip("-")
     return slug or "run"
+
+
+def _stable_json_sha256(payload: object) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _write_run_artifacts(
@@ -373,20 +379,22 @@ def main() -> None:
     print()
     print(finalists_summary)
 
+    ranked_payload = {
+        "max_seq_len": args.max_seq_len,
+        "total_batch_size": args.total_batch_size,
+        "device_batch_size": args.device_batch_size,
+        "pilot_tokens": args.pilot_tokens,
+        "eval_every": args.eval_every,
+        "eval_tokens": args.eval_tokens,
+        "slowdown_threshold_pct": args.slowdown_threshold_pct,
+        "clear_bpb_gain": args.clear_bpb_gain,
+        "ranked_runs": ranked,
+    }
+    ranked_source_sha256 = _stable_json_sha256(ranked_payload)
+
     if args.output_json:
-        payload = {
-            "max_seq_len": args.max_seq_len,
-            "total_batch_size": args.total_batch_size,
-            "device_batch_size": args.device_batch_size,
-            "pilot_tokens": args.pilot_tokens,
-            "eval_every": args.eval_every,
-            "eval_tokens": args.eval_tokens,
-            "slowdown_threshold_pct": args.slowdown_threshold_pct,
-            "clear_bpb_gain": args.clear_bpb_gain,
-            "ranked_runs": ranked,
-        }
         with open(args.output_json, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+            json.dump(ranked_payload, f, indent=2)
 
     if args.output_md:
         lines = [
@@ -404,6 +412,8 @@ def main() -> None:
 
     if args.output_finalists_json:
         payload = {
+            "source": ranked_json_path,
+            "source_sha256": ranked_source_sha256,
             "max_finalists": args.max_finalists,
             "selected_finalists": finalists,
         }
