@@ -1,9 +1,10 @@
-# Blackwell Smoke Preflight Blocker
+# Blackwell Smoke Runtime Blocker
 
-This machine is not ready to run the Blackwell FA4 smoke bundle.
+Blackwell FA4 smoke execution failed before a complete evidence bundle was emitted.
 
 ## Receipt
-- generated_at_utc: `2026-02-28T15:48:59Z`
+- mode: `smoke`
+- generated_at_utc: `2026-02-28T16:15:20Z`
 - ready: `false`
 - error: `CUDA is required but not available. nvidia-smi reports GPU(s): NVIDIA GeForce RTX 5090, 580.119.02. This usually means the active PyTorch build lacks CUDA support or is mismatched with the system CUDA driver/runtime.`
 - expect_backend: `fa4`
