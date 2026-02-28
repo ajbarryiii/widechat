@@ -212,6 +212,7 @@ def _write_runbook_md(
     require_real_input: bool,
     run_check_in: bool,
     output_check_json: str,
+    output_bundle_json: str,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     ranked_json_path = Path(input_json).resolve()
@@ -225,6 +226,7 @@ def _write_runbook_md(
     quoted_finalists_md = shlex.quote(str(finalists_md_path))
     check_json_path = output_check_json or str(Path(output_dir) / "pilot_bundle_check.json")
     quoted_check_json = shlex.quote(check_json_path)
+    quoted_output_bundle_json = shlex.quote(output_bundle_json) if output_bundle_json else ""
     command_lines = [
         "python -m scripts.run_stage2_promotion_bundle \\",
         f"  --input-json {quoted_input_json} \\",
@@ -241,6 +243,21 @@ def _write_runbook_md(
         if output_check_json:
             command_lines[-1] += " \\"
             command_lines.append(f"  --output-check-json {quoted_check_json}")
+    if output_bundle_json:
+        command_lines[-1] += " \\"
+        command_lines.append(f"  --output-bundle-json {quoted_output_bundle_json}")
+
+    check_in_lines = [
+        "python -m scripts.run_pilot_check_in \\",
+        f"  --artifacts-dir {quoted_output_dir} \\",
+        f"  --ranked-json {quoted_ranked_json} \\",
+        f"  --finalists-json {quoted_finalists_json} \\",
+        f"  --finalists-md {quoted_finalists_md} \\",
+        f"  --output-check-json {quoted_check_json}",
+    ]
+    if output_bundle_json:
+        check_in_lines[-1] += " \\"
+        check_in_lines.append(f"  --bundle-json {quoted_output_bundle_json}")
 
     lines = [
         "# Stage 2 Promotion Bundle Runbook",
@@ -256,12 +273,7 @@ def _write_runbook_md(
         "",
         "## Check-in command",
         "```bash",
-        "python -m scripts.run_pilot_check_in \\",
-        f"  --artifacts-dir {quoted_output_dir} \\",
-        f"  --ranked-json {quoted_ranked_json} \\",
-        f"  --finalists-json {quoted_finalists_json} \\",
-        f"  --finalists-md {quoted_finalists_md} \\",
-        f"  --output-check-json {quoted_check_json}",
+        *check_in_lines,
         "```",
         "",
     ]
@@ -386,6 +398,7 @@ def main() -> None:
             require_real_input=args.require_real_input,
             run_check_in=args.run_check_in,
             output_check_json=str(check_json_path) if check_json_path is not None else args.output_check_json,
+            output_bundle_json=args.output_bundle_json,
         )
 
     if bundle_json_path is not None:

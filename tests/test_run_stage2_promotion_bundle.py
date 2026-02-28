@@ -525,6 +525,7 @@ def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
         require_real_input=True,
         run_check_in=True,
         output_check_json=str(check_json),
+        output_bundle_json="",
     )
 
     runbook = runbook_md.read_text(encoding="utf-8")
@@ -555,6 +556,7 @@ def test_runbook_shell_quotes_spaced_paths(tmp_path):
         require_real_input=False,
         run_check_in=True,
         output_check_json=str(check_json),
+        output_bundle_json="",
     )
 
     runbook = runbook_md.read_text(encoding="utf-8")
@@ -571,6 +573,34 @@ def test_runbook_shell_quotes_spaced_paths(tmp_path):
     assert f"--finalists-json {quoted_finalists_json}" in runbook
     assert f"--finalists-md {quoted_finalists_md}" in runbook
     assert f"--output-check-json {quoted_check_json}" in runbook
+
+
+def test_runbook_includes_bundle_receipt_when_requested(tmp_path):
+    runbook_md = tmp_path / "stage2_runbook.md"
+    output_dir = tmp_path / "pilot_artifacts"
+    input_json = output_dir / "pilot_ranked_runs.json"
+    finalists_json = output_dir / "stage2_finalists.json"
+    finalists_md = output_dir / "stage2_finalists.md"
+    check_json = output_dir / "pilot_bundle_check.json"
+    bundle_json = output_dir / "stage2_promotion_bundle.json"
+
+    bundle._write_runbook_md(
+        path=runbook_md,
+        input_json=str(input_json),
+        output_dir=str(output_dir),
+        finalists_json=finalists_json,
+        finalists_md=finalists_md,
+        min_finalists=2,
+        max_finalists=3,
+        require_real_input=True,
+        run_check_in=True,
+        output_check_json=str(check_json),
+        output_bundle_json=str(bundle_json),
+    )
+
+    runbook = runbook_md.read_text(encoding="utf-8")
+    assert f"--output-bundle-json {bundle_json}" in runbook
+    assert f"--bundle-json {bundle_json}" in runbook
 
 
 def test_main_runbook_check_in_command_uses_absolute_ranked_path(tmp_path, monkeypatch):

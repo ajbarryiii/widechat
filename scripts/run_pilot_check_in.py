@@ -43,6 +43,20 @@ def _parse_args() -> argparse.Namespace:
         help="optional path for checker receipt (defaults to <artifacts-dir>/pilot_bundle_check.json)",
     )
     parser.add_argument(
+        "--bundle-json",
+        default="",
+        help=(
+            "optional promotion bundle receipt JSON path from "
+            "scripts.run_stage2_promotion_bundle --output-bundle-json; "
+            "accepts relative filename (with --artifacts-dir) or 'auto'"
+        ),
+    )
+    parser.add_argument(
+        "--bundle-json-name",
+        default="stage2_promotion_bundle.json",
+        help="bundle receipt filename to use when --bundle-json=auto",
+    )
+    parser.add_argument(
         "--allow-sample-input",
         action="store_true",
         help="allow sample/fixture ranked-run inputs (for local regression checks)",
@@ -131,6 +145,24 @@ def _resolve_artifacts_dir(
     return candidates[0]
 
 
+def _resolve_bundle_json_path(
+    *,
+    bundle_json_arg: str,
+    bundle_json_name: str,
+    artifacts_dir: Path,
+) -> Path | None:
+    if not bundle_json_arg:
+        return None
+
+    if bundle_json_arg == "auto":
+        return artifacts_dir / bundle_json_name
+
+    bundle_json = Path(bundle_json_arg)
+    if bundle_json.is_absolute():
+        return bundle_json
+    return artifacts_dir / bundle_json
+
+
 def main() -> None:
     args = _parse_args()
     artifacts_dir = _resolve_artifacts_dir(
@@ -144,6 +176,11 @@ def main() -> None:
     finalists_json = artifacts_dir / args.finalists_json
     finalists_md = artifacts_dir / args.finalists_md
     output_check_json = args.output_check_json or str(artifacts_dir / "pilot_bundle_check.json")
+    bundle_json_path = _resolve_bundle_json_path(
+        bundle_json_arg=args.bundle_json,
+        bundle_json_name=args.bundle_json_name,
+        artifacts_dir=artifacts_dir,
+    )
 
     if args.dry_run:
         print(
@@ -154,6 +191,7 @@ def main() -> None:
             f"finalists_md={finalists_md} "
             f"check_json={output_check_json} "
             f"allow_sample_input={args.allow_sample_input}"
+            + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
         )
         return
 
@@ -166,6 +204,7 @@ def main() -> None:
         check_in=True,
         allow_sample_input_in_check_in=args.allow_sample_input,
         output_check_json=output_check_json,
+        bundle_json_path=bundle_json_path,
     )
 
     print(
@@ -173,6 +212,7 @@ def main() -> None:
         f"finalists={finalists_count} "
         f"artifacts_dir={artifacts_dir} "
         f"check_json={output_check_json}"
+        + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
     )
 
 

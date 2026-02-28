@@ -69,6 +69,8 @@ def test_main_honors_custom_paths(tmp_path, monkeypatch):
             "real_finalists.md",
             "--output-check-json",
             str(receipt_path),
+            "--bundle-json",
+            "stage2_promotion_bundle.json",
         ],
     )
 
@@ -80,6 +82,7 @@ def test_main_honors_custom_paths(tmp_path, monkeypatch):
     assert calls["require_real_input"] is True
     assert calls["allow_sample_input_in_check_in"] is False
     assert calls["output_check_json"] == str(receipt_path)
+    assert calls["bundle_json_path"] == artifacts_dir / "stage2_promotion_bundle.json"
 
 
 def test_main_allow_sample_input_disables_real_input_guard(tmp_path, monkeypatch):
@@ -130,6 +133,31 @@ def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, caps
     assert "pilot_check_in_dry_run_ok" in stdout
     assert f"artifacts_dir={artifacts_dir}" in stdout
     assert f"check_json={artifacts_dir / 'pilot_bundle_check.json'}" in stdout
+
+
+def test_main_dry_run_resolves_bundle_json_auto(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot"
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--bundle-json",
+            "auto",
+            "--dry-run",
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert f"bundle_json={artifacts_dir / 'stage2_promotion_bundle.json'}" in stdout
 
 
 def test_main_auto_selects_latest_real_artifacts_dir(tmp_path, monkeypatch):
