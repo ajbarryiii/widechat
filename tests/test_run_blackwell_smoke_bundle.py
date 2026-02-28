@@ -1,4 +1,5 @@
 import json
+import shlex
 
 import pytest
 
@@ -91,3 +92,32 @@ def test_main_honors_custom_runbook_path(tmp_path, monkeypatch):
 
     assert runbook_path.exists()
     assert "# Blackwell Smoke Bundle Runbook" in runbook_path.read_text(encoding="utf-8")
+
+
+def test_main_shell_quotes_runbook_commands_for_spaced_paths(tmp_path, monkeypatch):
+    output_dir = tmp_path / "blackwell artifacts"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    bundle.main()
+
+    runbook_md = output_dir / "blackwell_smoke_runbook.md"
+    runbook_content = runbook_md.read_text(encoding="utf-8")
+    quoted_output_dir = shlex.quote(str(output_dir))
+    quoted_check_json = shlex.quote(str(output_dir / "blackwell_bundle_check.json"))
+
+    assert f"--output-dir {quoted_output_dir}" in runbook_content
+    assert quoted_check_json in runbook_content

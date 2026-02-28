@@ -5,6 +5,7 @@ python -m scripts.run_blackwell_smoke_bundle --output-dir artifacts/blackwell_sm
 """
 
 import argparse
+import shlex
 from pathlib import Path
 
 from scripts.flash_backend_smoke import (
@@ -48,14 +49,17 @@ def _parse_args() -> argparse.Namespace:
 def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evidence_md: str) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    quoted_output_dir = shlex.quote(output_dir)
+    quoted_expect_backend = shlex.quote(expect_backend)
+    quoted_check_json = shlex.quote(f"{output_dir}/blackwell_bundle_check.json")
     lines = [
         "# Blackwell Smoke Bundle Runbook",
         "",
         "## Command",
         "```bash",
         "python -m scripts.run_blackwell_smoke_bundle \\",
-        f"  --output-dir {output_dir} \\",
-        f"  --expect-backend {expect_backend}",
+        f"  --output-dir {quoted_output_dir} \\",
+        f"  --expect-backend {quoted_expect_backend}",
         "```",
         "",
         "## Expected outputs",
@@ -66,8 +70,8 @@ def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evi
         "## Check-in checklist",
         f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
         "- Run `python -m scripts.run_blackwell_check_in --bundle-dir"
-        f" {output_dir} --expect-backend {expect_backend} --output-check-json"
-        f" {output_dir}/blackwell_bundle_check.json`.",
+        f" {quoted_output_dir} --expect-backend {quoted_expect_backend} --output-check-json"
+        f" {quoted_check_json}`.",
         "- Verify evidence markdown includes device metadata and `status_line_ok: true`.",
         f"- Confirm `{output_dir}/blackwell_bundle_check.json` records `selected_backend: {expect_backend}`.",
         "- Commit the emitted evidence artifacts from this run.",

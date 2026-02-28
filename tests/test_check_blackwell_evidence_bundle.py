@@ -1,4 +1,5 @@
 import json
+import shlex
 import subprocess
 
 import pytest
@@ -195,6 +196,56 @@ def test_main_accepts_runbook_with_check_in_helper(tmp_path, monkeypatch):
                 "- Run `python -m scripts.run_blackwell_check_in --bundle-dir",
                 f" {bundle_dir} --expect-backend fa4 --output-check-json",
                 f" {bundle_dir}/blackwell_bundle_check.json`.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    checker.main()
+
+
+def test_main_accepts_shell_quoted_runbook_paths(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell artifacts"
+    _write_valid_bundle(bundle_dir)
+    quoted_bundle_dir = shlex.quote(str(bundle_dir))
+    quoted_check_json = shlex.quote(str(bundle_dir / "blackwell_bundle_check.json"))
+    (bundle_dir / "blackwell_smoke_runbook.md").write_text(
+        "\n".join(
+            [
+                "# Blackwell Smoke Bundle Runbook",
+                "",
+                "## Command",
+                "```bash",
+                "python -m scripts.run_blackwell_smoke_bundle \\",
+                f"  --output-dir {quoted_bundle_dir} \\",
+                "  --expect-backend fa4",
+                "```",
+                "",
+                "## Expected outputs",
+                f"- `{bundle_dir}/flash_backend_smoke.json`",
+                f"- `{bundle_dir}/flash_backend_status.log`",
+                f"- `{bundle_dir}/blackwell_smoke_evidence.md`",
+                "",
+                "## Check-in checklist",
+                "- Ensure command prints `bundle_ok selected=fa4`.",
+                "- Run `python -m scripts.run_blackwell_check_in --bundle-dir",
+                f" {quoted_bundle_dir} --expect-backend fa4 --output-check-json",
+                f" {quoted_check_json}`.",
                 "",
             ]
         ),

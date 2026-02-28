@@ -6,6 +6,7 @@ python -m scripts.check_blackwell_evidence_bundle --bundle-dir artifacts/blackwe
 
 import argparse
 import json
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -96,21 +97,40 @@ def _assert_real_bundle_dir(bundle_dir: Path) -> None:
 
 def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend: str) -> None:
     expected_path = str(bundle_dir)
+    quoted_expected_path = shlex.quote(expected_path)
     expected_evidence = str(bundle_dir / "blackwell_smoke_evidence.md")
     expected_check_json = str(bundle_dir / "blackwell_bundle_check.json")
+    quoted_expect_backend = shlex.quote(expect_backend)
+    quoted_check_json = shlex.quote(expected_check_json)
     expected_snippets = [
         "# Blackwell Smoke Bundle Runbook",
         "python -m scripts.run_blackwell_smoke_bundle",
-        f"--output-dir {expected_path}",
-        f"--expect-backend {expect_backend}",
         "--output-check-json",
-        expected_check_json,
+        expected_evidence,
         f"- `{expected_evidence}`",
         f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
     ]
     for snippet in expected_snippets:
         if snippet not in runbook_text:
             raise RuntimeError(f"runbook markdown missing snippet: {snippet}")
+
+    output_dir_snippets = [
+        f"--output-dir {expected_path}",
+        f"--output-dir {quoted_expected_path}",
+    ]
+    if not any(snippet in runbook_text for snippet in output_dir_snippets):
+        raise RuntimeError(f"runbook markdown missing snippet: {output_dir_snippets[0]}")
+
+    expect_backend_snippets = [
+        f"--expect-backend {expect_backend}",
+        f"--expect-backend {quoted_expect_backend}",
+    ]
+    if not any(snippet in runbook_text for snippet in expect_backend_snippets):
+        raise RuntimeError(f"runbook markdown missing snippet: {expect_backend_snippets[0]}")
+
+    check_json_snippets = [expected_check_json, quoted_check_json]
+    if not any(snippet in runbook_text for snippet in check_json_snippets):
+        raise RuntimeError(f"runbook markdown missing snippet: {expected_check_json}")
 
     has_direct_command = "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_text
     has_helper_command = "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_text
