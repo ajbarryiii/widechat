@@ -123,6 +123,29 @@ def test_main_rejects_finalists_mismatch(tmp_path, monkeypatch):
         checker.main()
 
 
+def test_main_rejects_finalists_source_mismatch(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    payload["source"] = str(tmp_path / "other_ranked_runs.json")
+    finalists_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="finalists JSON source does not match --ranked-json"):
+        checker.main()
+
+
 def test_main_rejects_markdown_missing_flag_line(tmp_path, monkeypatch):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     finalists_md.write_text("## Stage 2 Finalists\n", encoding="utf-8")

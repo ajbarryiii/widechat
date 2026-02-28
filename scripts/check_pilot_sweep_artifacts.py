@@ -71,6 +71,9 @@ def _load_finalists_payload(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise RuntimeError(f"finalists JSON must be an object: {path}")
+    source = payload.get("source")
+    if not isinstance(source, str) or not source:
+        raise RuntimeError(f"finalists JSON missing non-empty source path: {path}")
     max_finalists = payload.get("max_finalists")
     if isinstance(max_finalists, bool) or not isinstance(max_finalists, int) or max_finalists <= 0:
         raise RuntimeError(f"finalists JSON missing positive integer max_finalists: {path}")
@@ -81,6 +84,24 @@ def _load_finalists_payload(path: Path) -> dict[str, object]:
         if not isinstance(row, dict):
             raise RuntimeError(f"selected_finalists[{index}] must be an object: {path}")
     return payload
+
+
+def _assert_finalists_source_matches_ranking(
+    *,
+    finalists_payload: dict[str, object],
+    finalists_json_path: Path,
+    ranked_json_path: Path,
+) -> None:
+    source = finalists_payload["source"]
+    if not isinstance(source, str) or not source:
+        raise RuntimeError(f"finalists JSON missing non-empty source path: {finalists_json_path}")
+    resolved_source = Path(source).resolve()
+    resolved_ranked = ranked_json_path.resolve()
+    if resolved_source != resolved_ranked:
+        raise RuntimeError(
+            "finalists JSON source does not match --ranked-json: "
+            f"source={source} ranked_json={ranked_json_path}"
+        )
 
 
 def _assert_finalists_match_ranking(
@@ -144,6 +165,11 @@ def main() -> None:
         _assert_git_tracked(paths)
 
     finalists_payload = _load_finalists_payload(paths["finalists_json"])
+    _assert_finalists_source_matches_ranking(
+        finalists_payload=finalists_payload,
+        finalists_json_path=paths["finalists_json"],
+        ranked_json_path=paths["ranked_json"],
+    )
     expected_finalists = _assert_finalists_match_ranking(
         ranked_runs=ranked_runs,
         finalists_payload=finalists_payload,
