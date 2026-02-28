@@ -37,8 +37,7 @@ def test_main_writes_validated_artifact_bundle(tmp_path, monkeypatch, capsys):
     runbook_content = runbook_md.read_text(encoding="utf-8")
     assert "python -m scripts.run_blackwell_smoke_bundle" in runbook_content
     assert f"--output-dir {output_dir}" in runbook_content
-    assert "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_content
-    assert "--check-in" in runbook_content
+    assert "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_content
     assert "--output-check-json" in runbook_content
     assert f"{output_dir}/blackwell_bundle_check.json" in runbook_content
     assert "bundle_ok selected=fa4" in runbook_content

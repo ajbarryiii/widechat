@@ -89,10 +89,8 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     expected_snippets = [
         "# Blackwell Smoke Bundle Runbook",
         "python -m scripts.run_blackwell_smoke_bundle",
-        "python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
         f"--output-dir {expected_path}",
         f"--expect-backend {expect_backend}",
-        "--check-in",
         "--output-check-json",
         expected_check_json,
         f"- `{expected_evidence}`",
@@ -101,6 +99,16 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     for snippet in expected_snippets:
         if snippet not in runbook_text:
             raise RuntimeError(f"runbook markdown missing snippet: {snippet}")
+
+    has_direct_command = "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_text
+    has_helper_command = "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_text
+    if not has_direct_command and not has_helper_command:
+        raise RuntimeError(
+            "runbook markdown missing snippet: "
+            "python -m scripts.check_blackwell_evidence_bundle --bundle-dir"
+        )
+    if has_direct_command and "--check-in" not in runbook_text:
+        raise RuntimeError("runbook markdown missing snippet: --check-in")
 
 
 def _write_check_report(
@@ -126,43 +134,63 @@ def _write_check_report(
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def main() -> None:
-    args = _parse_args()
-    require_blackwell = args.require_blackwell or args.check_in
-    require_git_tracked = args.require_git_tracked or args.check_in
+def run_bundle_check(
+    *,
+    bundle_dir: Path,
+    expect_backend: str,
+    check_in: bool,
+    require_blackwell: bool,
+    require_git_tracked: bool,
+    output_check_json: str,
+) -> str:
+    effective_require_blackwell = require_blackwell or check_in
+    effective_require_git_tracked = require_git_tracked or check_in
 
-    bundle_dir = Path(args.bundle_dir)
     paths = _required_paths(bundle_dir)
     _assert_files_exist(paths)
-    if require_git_tracked:
+    if effective_require_git_tracked:
         _assert_git_tracked(paths, bundle_dir)
 
     payload = _load_artifact(str(paths["artifact_json"]))
-    selected_backend, _capability = _validate_artifact(payload, args.expect_backend, require_blackwell)
+    selected_backend, _capability = _validate_artifact(payload, expect_backend, effective_require_blackwell)
 
     status_line = _load_status_line(str(paths["status_line"]))
     status_backend = _validate_status_line_consistency(payload, status_line)
-    if status_backend != args.expect_backend:
-        raise RuntimeError(f"expected backend {args.expect_backend}, got {status_backend} in status-line file")
+    if status_backend != expect_backend:
+        raise RuntimeError(f"expected backend {expect_backend}, got {status_backend} in status-line file")
 
     evidence_text = paths["evidence_md"].read_text(encoding="utf-8")
     _assert_evidence_content(evidence_text, selected_backend)
 
     runbook_text = paths["runbook_md"].read_text(encoding="utf-8")
-    _assert_runbook_content(runbook_text, bundle_dir, args.expect_backend)
+    _assert_runbook_content(runbook_text, bundle_dir, expect_backend)
 
-    if args.output_check_json:
+    if output_check_json:
         _write_check_report(
-            args.output_check_json,
+            output_check_json,
             bundle_dir=bundle_dir,
-            expect_backend=args.expect_backend,
+            expect_backend=expect_backend,
             selected_backend=selected_backend,
-            check_in=args.check_in,
-            require_blackwell=require_blackwell,
-            require_git_tracked=require_git_tracked,
+            check_in=check_in,
+            require_blackwell=effective_require_blackwell,
+            require_git_tracked=effective_require_git_tracked,
         )
 
-    print(f"bundle_check_ok selected={selected_backend} bundle_dir={bundle_dir}")
+    return selected_backend
+
+
+def main() -> None:
+    args = _parse_args()
+    selected_backend = run_bundle_check(
+        bundle_dir=Path(args.bundle_dir),
+        expect_backend=args.expect_backend,
+        check_in=args.check_in,
+        require_blackwell=args.require_blackwell,
+        require_git_tracked=args.require_git_tracked,
+        output_check_json=args.output_check_json,
+    )
+
+    print(f"bundle_check_ok selected={selected_backend} bundle_dir={args.bundle_dir}")
 
 
 if __name__ == "__main__":
