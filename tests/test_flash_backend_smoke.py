@@ -57,6 +57,7 @@ def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["selected_backend"] == "fa4"
     assert payload["status_line"] == status
+    assert payload["is_sample"] is False
     assert isinstance(payload["cuda_available"], bool)
     assert "device_name" in payload
     assert "cuda_capability" in payload

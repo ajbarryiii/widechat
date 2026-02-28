@@ -9,12 +9,13 @@ import pytest
 from scripts import check_blackwell_evidence_bundle as checker
 
 
-def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0)):
+def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0), is_sample=False):
     bundle_dir.mkdir(parents=True, exist_ok=True)
     status_line = "Flash Attention backend selection: selected=fa4, mode=auto"
     payload = {
         "selected_backend": "fa4",
         "status_line": status_line,
+        "is_sample": is_sample,
         "cuda_available": True,
         "device_name": "RTX 5090",
         "cuda_capability": [cuda_capability[0], cuda_capability[1]],
@@ -319,6 +320,28 @@ def test_main_require_real_bundle_rejects_sample_fixture_path(tmp_path, monkeypa
         checker.main()
 
 
+def test_main_require_real_bundle_rejects_sample_payload_metadata(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "artifacts" / "blackwell" / "renamed_real_path"
+    _write_valid_bundle(bundle_dir, is_sample=True)
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--require-real-bundle",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="payload is marked as sample fixture"):
+        checker.main()
+
+
 def test_main_writes_machine_readable_check_report(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
     _write_valid_bundle(bundle_dir)
@@ -395,13 +418,16 @@ def test_main_auto_selects_latest_real_bundle(tmp_path, monkeypatch, capsys):
     older_bundle = bundle_root / "run_older"
     latest_bundle = bundle_root / "run_latest"
     sample_bundle = bundle_root / "sample_bundle"
+    relabeled_sample_bundle = bundle_root / "run_relabeled_sample"
     _write_valid_bundle(older_bundle)
     _write_valid_bundle(latest_bundle)
     _write_valid_bundle(sample_bundle)
+    _write_valid_bundle(relabeled_sample_bundle, is_sample=True)
 
     os.utime(older_bundle / "flash_backend_smoke.json", (100, 100))
     os.utime(latest_bundle / "flash_backend_smoke.json", (200, 200))
     os.utime(sample_bundle / "flash_backend_smoke.json", (300, 300))
+    os.utime(relabeled_sample_bundle / "flash_backend_smoke.json", (400, 400))
 
     def _fake_run(cmd, capture_output, text, check):
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")

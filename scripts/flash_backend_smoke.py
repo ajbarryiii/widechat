@@ -80,6 +80,7 @@ def _write_smoke_artifact(path: str, status_line: str, selected_backend: str) ->
     payload = {
         "status_line": status_line,
         "selected_backend": selected_backend,
+        "is_sample": False,
         **metadata,
     }
     output_path = Path(path)

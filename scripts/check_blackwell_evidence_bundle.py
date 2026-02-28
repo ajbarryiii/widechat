@@ -85,7 +85,14 @@ def _required_paths(bundle_dir: Path) -> dict[str, Path]:
 def _is_real_bundle_dir(bundle_dir: Path) -> bool:
     if "sample_bundle" in bundle_dir.parts:
         return False
-    return all((bundle_dir / filename).is_file() for filename in _REQUIRED_BUNDLE_FILES)
+    if not all((bundle_dir / filename).is_file() for filename in _REQUIRED_BUNDLE_FILES):
+        return False
+    artifact_path = bundle_dir / "flash_backend_smoke.json"
+    try:
+        payload = _load_artifact(str(artifact_path))
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError):
+        return False
+    return payload.get("is_sample") is not True
 
 
 def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
@@ -137,6 +144,14 @@ def _assert_real_bundle_dir(bundle_dir: Path) -> None:
     if "sample_bundle" in bundle_dir.parts:
         raise RuntimeError(
             "bundle_dir points to sample fixture artifacts; use emitted RTX 5090 bundle artifacts"
+        )
+
+
+def _assert_real_bundle_payload(payload: dict[str, object], artifact_path: Path) -> None:
+    if payload.get("is_sample") is True:
+        raise RuntimeError(
+            "bundle artifact payload is marked as sample fixture; use emitted RTX 5090 bundle artifacts: "
+            f"{artifact_path}"
         )
 
 
@@ -247,6 +262,8 @@ def run_bundle_check(
         _assert_real_bundle_dir(bundle_dir)
 
     payload = _load_artifact(str(paths["artifact_json"]))
+    if require_real_bundle:
+        _assert_real_bundle_payload(payload, paths["artifact_json"])
     selected_backend, _capability = _validate_artifact(payload, expect_backend, effective_require_blackwell)
 
     status_line = _load_status_line(str(paths["status_line"]))
