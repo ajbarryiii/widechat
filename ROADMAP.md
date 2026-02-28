@@ -212,6 +212,7 @@ Examples:
   - [x] Add artifact-validation tests for recorded smoke JSON (backend expectation + Blackwell capability checks).
   - [x] Add artifact-validation coverage for status-line/JSON bundle consistency checks.
   - [x] Add one-command smoke-bundle test coverage (`scripts.run_blackwell_smoke_bundle`) so RTX 5090 validation workflow remains reproducible and regression-tested.
+  - [x] Add an opt-in on-device integration test (`tests/test_blackwell_on_device_smoke.py`) that runs `python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell --require-device-substring "RTX 5090" --output-dir ...` and asserts artifact/status evidence.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests
