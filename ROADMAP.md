@@ -170,6 +170,7 @@ Examples:
               - [x] Add per-artifact SHA256 digests to checker receipts (`artifact_sha256`) so strict check-in evidence binds the exact JSON/status/evidence/runbook files reviewed.
               - [x] Add payload-level sample-fixture guardrails (`is_sample`) in Blackwell smoke artifacts/checkers so strict real-bundle validation rejects relabeled sample JSON even outside `sample_bundle` paths.
               - [x] Add smoke-artifact provenance fields (`generated_at_utc`, `git_commit`) and enforce them in artifact validation/evidence checks so check-in reviews can verify when and from which repo revision each bundle was produced.
+              - [x] Add strict RTX 5090 device-name guardrails (`--require-device-substring`, default `RTX 5090` for check-in helpers) so strict bundle validation fails fast when artifacts come from non-5090 hardware.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)

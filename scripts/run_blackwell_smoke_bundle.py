@@ -35,6 +35,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4")
     parser.add_argument(
+        "--require-device-substring",
+        default="RTX 5090",
+        help="case-insensitive device_name substring required in artifact metadata",
+    )
+    parser.add_argument(
         "--output-evidence-md",
         default="",
         help="optional markdown path (defaults to <output-dir>/blackwell_smoke_evidence.md)",
@@ -62,11 +67,18 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evidence_md: str) -> None:
+def _write_runbook_markdown(
+    path: str,
+    output_dir: str,
+    expect_backend: str,
+    evidence_md: str,
+    require_device_substring: str,
+) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     quoted_output_dir = shlex.quote(output_dir)
     quoted_expect_backend = shlex.quote(expect_backend)
+    quoted_require_device_substring = shlex.quote(require_device_substring)
     quoted_check_json = shlex.quote(f"{output_dir}/blackwell_bundle_check.json")
     lines = [
         "# Blackwell Smoke Bundle Runbook",
@@ -75,7 +87,8 @@ def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evi
         "```bash",
         "python -m scripts.run_blackwell_smoke_bundle \\",
         f"  --output-dir {quoted_output_dir} \\",
-        f"  --expect-backend {quoted_expect_backend}",
+        f"  --expect-backend {quoted_expect_backend} \\",
+        f"  --require-device-substring {quoted_require_device_substring}",
         "```",
         "",
         "## Expected outputs",
@@ -87,7 +100,7 @@ def _write_runbook_markdown(path: str, output_dir: str, expect_backend: str, evi
         f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
         "- Run `python -m scripts.run_blackwell_check_in --bundle-dir"
         f" {quoted_output_dir} --expect-backend {quoted_expect_backend} --output-check-json"
-        f" {quoted_check_json}`.",
+        f" {quoted_check_json} --require-device-substring {quoted_require_device_substring}`.",
         "- Verify evidence markdown includes device metadata and `status_line_ok: true`.",
         f"- Confirm `{output_dir}/blackwell_bundle_check.json` records `selected_backend: {expect_backend}`.",
         "- Commit the emitted evidence artifacts from this run.",
@@ -108,6 +121,7 @@ def main() -> None:
         output_dir=args.output_dir,
         expect_backend=args.expect_backend,
         evidence_md=evidence_md,
+        require_device_substring=args.require_device_substring,
     )
 
     if args.dry_run:
@@ -120,6 +134,7 @@ def main() -> None:
             f"evidence_md={evidence_md} "
             f"runbook_md={runbook_md} "
             f"run_bundle_check={args.run_bundle_check} "
+            f"require_device_substring={args.require_device_substring or '<none>'} "
             f"check_json={dry_run_check_json}"
         )
         return
@@ -140,6 +155,7 @@ def main() -> None:
         payload,
         expect_backend=args.expect_backend,
         require_blackwell=True,
+        require_device_substring=args.require_device_substring,
     )
 
     recorded_status_line = _load_status_line(status_line_path)
@@ -164,6 +180,7 @@ def main() -> None:
             require_blackwell=True,
             require_git_tracked=False,
             require_real_bundle=False,
+            require_device_substring=args.require_device_substring,
             output_check_json=output_check_json,
         )
         checker_receipt_path = output_check_json

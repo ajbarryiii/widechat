@@ -55,6 +55,45 @@ def test_validate_artifact_rejects_non_blackwell_capability():
         validator._validate_artifact(payload, expect_backend="fa4", require_blackwell=True)
 
 
+def test_validate_artifact_rejects_missing_required_device_substring():
+    payload = {
+        "selected_backend": "fa4",
+        "cuda_available": True,
+        "device_name": "NVIDIA H100",
+        "cuda_capability": [10, 0],
+        "generated_at_utc": "2026-02-27T00:00:00Z",
+        "git_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }
+
+    with pytest.raises(RuntimeError, match="device_name does not include required substring"):
+        validator._validate_artifact(
+            payload,
+            expect_backend="fa4",
+            require_blackwell=False,
+            require_device_substring="RTX 5090",
+        )
+
+
+def test_validate_artifact_accepts_case_insensitive_required_device_substring():
+    payload = {
+        "selected_backend": "fa4",
+        "cuda_available": True,
+        "device_name": "NVIDIA GeForce RTX 5090",
+        "cuda_capability": [10, 0],
+        "generated_at_utc": "2026-02-27T00:00:00Z",
+        "git_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }
+
+    selected, capability = validator._validate_artifact(
+        payload,
+        expect_backend="fa4",
+        require_blackwell=False,
+        require_device_substring="rtx 5090",
+    )
+    assert selected == "fa4"
+    assert capability == (10, 0)
+
+
 def test_validate_artifact_rejects_malformed_capability_list():
     payload = {
         "selected_backend": "fa4",

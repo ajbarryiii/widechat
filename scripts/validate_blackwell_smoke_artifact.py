@@ -22,6 +22,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4", help="required selected backend")
     parser.add_argument("--require-blackwell", action="store_true", help="require sm100+ CUDA capability in artifact")
     parser.add_argument(
+        "--require-device-substring",
+        default="",
+        help="optional case-insensitive device_name substring required in artifact metadata (for example 'RTX 5090')",
+    )
+    parser.add_argument(
         "--output-evidence-md",
         default="",
         help="optional path to write a markdown evidence summary for check-in/review",
@@ -72,6 +77,14 @@ def _parse_git_commit(raw: object) -> str | None:
     return raw
 
 
+def _parse_device_name(raw: object) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("device_name must be a string or null")
+    return raw
+
+
 def _extract_selected_backend(status_line: str) -> str:
     match = re.search(r"selected=(fa4|fa3|sdpa)", status_line)
     if match is None:
@@ -79,7 +92,12 @@ def _extract_selected_backend(status_line: str) -> str:
     return match.group(1)
 
 
-def _validate_artifact(payload: dict[str, object], expect_backend: str, require_blackwell: bool) -> tuple[str, tuple[int, int] | None]:
+def _validate_artifact(
+    payload: dict[str, object],
+    expect_backend: str,
+    require_blackwell: bool,
+    require_device_substring: str = "",
+) -> tuple[str, tuple[int, int] | None]:
     selected_backend = payload.get("selected_backend")
     if not isinstance(selected_backend, str):
         raise ValueError("artifact missing selected_backend string")
@@ -91,6 +109,7 @@ def _validate_artifact(payload: dict[str, object], expect_backend: str, require_
         raise ValueError("artifact missing cuda_available bool")
 
     capability = _parse_capability(payload.get("cuda_capability"))
+    device_name = _parse_device_name(payload.get("device_name"))
     _parse_generated_at_utc(payload.get("generated_at_utc"))
     _parse_git_commit(payload.get("git_commit"))
     if require_blackwell:
@@ -101,6 +120,17 @@ def _validate_artifact(payload: dict[str, object], expect_backend: str, require_
         major, _minor = capability
         if major < 10:
             raise RuntimeError("artifact is not from Blackwell (requires sm100+)")
+
+    if require_device_substring:
+        if device_name is None:
+            raise RuntimeError(
+                f"artifact missing device_name required to match {require_device_substring!r}"
+            )
+        if require_device_substring.lower() not in device_name.lower():
+            raise RuntimeError(
+                "artifact device_name does not include required substring "
+                f"{require_device_substring!r}: {device_name!r}"
+            )
 
     return selected_backend, capability
 
@@ -174,7 +204,12 @@ def _write_evidence_markdown(
 def main() -> None:
     args = _parse_args()
     payload = _load_artifact(args.artifact_json)
-    selected_backend, capability = _validate_artifact(payload, args.expect_backend, args.require_blackwell)
+    selected_backend, capability = _validate_artifact(
+        payload,
+        args.expect_backend,
+        args.require_blackwell,
+        args.require_device_substring,
+    )
     status_line_ok = False
     if args.status_line_file:
         status_line = _load_status_line(args.status_line_file)

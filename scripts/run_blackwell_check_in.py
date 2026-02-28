@@ -25,6 +25,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4")
     parser.add_argument(
+        "--require-device-substring",
+        default="RTX 5090",
+        help="case-insensitive device_name substring required in artifact metadata",
+    )
+    parser.add_argument(
         "--output-check-json",
         default="",
         help="optional path for checker receipt (defaults to <bundle-dir>/blackwell_bundle_check.json)",
@@ -57,6 +62,7 @@ def main() -> None:
             f"bundle_dir={bundle_dir} "
             f"expect_backend={args.expect_backend} "
             f"check_json={output_check_json} "
+            f"require_device_substring={args.require_device_substring or '<none>'} "
             f"allow_sample_bundle={args.allow_sample_bundle}"
         )
         return
@@ -68,6 +74,7 @@ def main() -> None:
         require_blackwell=False,
         require_git_tracked=False,
         require_real_bundle=not args.allow_sample_bundle,
+        require_device_substring=args.require_device_substring,
         output_check_json=output_check_json,
     )
     print(

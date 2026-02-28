@@ -51,7 +51,8 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0), is_sample=False)
                 "```bash",
                 "python -m scripts.run_blackwell_smoke_bundle \\",
                 f"  --output-dir {bundle_dir} \\",
-                "  --expect-backend fa4",
+                "  --expect-backend fa4 \\",
+                "  --require-device-substring 'RTX 5090'",
                 "```",
                 "",
                 "## Expected outputs",
@@ -63,7 +64,7 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0), is_sample=False)
                 "- Ensure command prints `bundle_ok selected=fa4`.",
                 "- Run `python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
                 f" {bundle_dir} --expect-backend fa4 --check-in --output-check-json",
-                f" {bundle_dir}/blackwell_bundle_check.json`.",
+                f" {bundle_dir}/blackwell_bundle_check.json --require-device-substring 'RTX 5090'`.",
                 "",
             ]
         ),
@@ -194,7 +195,8 @@ def test_main_accepts_runbook_with_check_in_helper(tmp_path, monkeypatch):
                 "```bash",
                 "python -m scripts.run_blackwell_smoke_bundle \\",
                 f"  --output-dir {bundle_dir} \\",
-                "  --expect-backend fa4",
+                "  --expect-backend fa4 \\",
+                "  --require-device-substring 'RTX 5090'",
                 "```",
                 "",
                 "## Expected outputs",
@@ -206,7 +208,7 @@ def test_main_accepts_runbook_with_check_in_helper(tmp_path, monkeypatch):
                 "- Ensure command prints `bundle_ok selected=fa4`.",
                 "- Run `python -m scripts.run_blackwell_check_in --bundle-dir",
                 f" {bundle_dir} --expect-backend fa4 --output-check-json",
-                f" {bundle_dir}/blackwell_bundle_check.json`.",
+                f" {bundle_dir}/blackwell_bundle_check.json --require-device-substring 'RTX 5090'`.",
                 "",
             ]
         ),
@@ -244,7 +246,8 @@ def test_main_accepts_shell_quoted_runbook_paths(tmp_path, monkeypatch):
                 "```bash",
                 "python -m scripts.run_blackwell_smoke_bundle \\",
                 f"  --output-dir {quoted_bundle_dir} \\",
-                "  --expect-backend fa4",
+                "  --expect-backend fa4 \\",
+                "  --require-device-substring 'RTX 5090'",
                 "```",
                 "",
                 "## Expected outputs",
@@ -256,7 +259,7 @@ def test_main_accepts_shell_quoted_runbook_paths(tmp_path, monkeypatch):
                 "- Ensure command prints `bundle_ok selected=fa4`.",
                 "- Run `python -m scripts.run_blackwell_check_in --bundle-dir",
                 f" {quoted_bundle_dir} --expect-backend fa4 --output-check-json",
-                f" {quoted_check_json}`.",
+                f" {quoted_check_json} --require-device-substring 'RTX 5090'`.",
                 "",
             ]
         ),
@@ -299,6 +302,31 @@ def test_main_check_in_mode_rejects_non_blackwell_bundle(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="artifact is not from Blackwell"):
+        checker.main()
+
+
+def test_main_check_in_mode_rejects_non_5090_device_name(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    payload = json.loads((bundle_dir / "flash_backend_smoke.json").read_text(encoding="utf-8"))
+    payload["device_name"] = "NVIDIA H100"
+    (bundle_dir / "flash_backend_smoke.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="device_name does not include required substring"):
         checker.main()
 
 
@@ -379,6 +407,7 @@ def test_main_writes_machine_readable_check_report(tmp_path, monkeypatch):
     assert payload["require_blackwell"] is True
     assert payload["require_git_tracked"] is True
     assert payload["require_real_bundle"] is False
+    assert payload["require_device_substring"] == "RTX 5090"
     assert payload["artifact_sha256"] == {
         "artifact_json": _sha256(bundle_dir / "flash_backend_smoke.json"),
         "status_line": _sha256(bundle_dir / "flash_backend_status.log"),
@@ -415,6 +444,7 @@ def test_main_check_report_includes_require_real_bundle(tmp_path, monkeypatch):
 
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["require_real_bundle"] is True
+    assert payload["require_device_substring"] == "RTX 5090"
 
 
 def test_main_auto_selects_latest_real_bundle(tmp_path, monkeypatch, capsys):
@@ -559,6 +589,7 @@ def test_main_dry_run_skips_bundle_validation(tmp_path, monkeypatch, capsys):
     assert "require_blackwell=True" in stdout
     assert "require_git_tracked=True" in stdout
     assert "require_real_bundle=True" in stdout
+    assert "require_device_substring=RTX 5090" in stdout
     assert f"output_check_json={report_path}" in stdout
     assert not report_path.exists()
 

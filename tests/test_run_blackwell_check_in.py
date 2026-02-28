@@ -43,6 +43,7 @@ def test_main_runs_strict_check_in_with_default_receipt(tmp_path, monkeypatch, c
     assert calls["require_blackwell"] is False
     assert calls["require_git_tracked"] is False
     assert calls["require_real_bundle"] is True
+    assert calls["require_device_substring"] == "RTX 5090"
     assert calls["output_check_json"] == str(bundle_dir / "blackwell_bundle_check.json")
 
     stdout = capsys.readouterr().out
@@ -76,6 +77,7 @@ def test_main_honors_custom_receipt_path(tmp_path, monkeypatch):
 
     assert calls["output_check_json"] == str(receipt_path)
     assert calls["require_real_bundle"] is True
+    assert calls["require_device_substring"] == "RTX 5090"
 
 
 def test_main_allows_sample_bundle_when_requested(tmp_path, monkeypatch):
@@ -100,6 +102,7 @@ def test_main_allows_sample_bundle_when_requested(tmp_path, monkeypatch):
     runner.main()
 
     assert calls["require_real_bundle"] is False
+    assert calls["require_device_substring"] == "RTX 5090"
 
 
 def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, capsys):
@@ -127,6 +130,7 @@ def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, caps
     assert "blackwell_check_in_dry_run_ok" in stdout
     assert f"bundle_dir={bundle_dir}" in stdout
     assert f"check_json={bundle_dir / 'blackwell_bundle_check.json'}" in stdout
+    assert "require_device_substring=RTX 5090" in stdout
 
 
 def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):

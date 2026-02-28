@@ -46,6 +46,14 @@ def _parse_args() -> argparse.Namespace:
         help="require artifact CUDA capability to be sm100+",
     )
     parser.add_argument(
+        "--require-device-substring",
+        default="",
+        help=(
+            "optional case-insensitive device_name substring required in artifact metadata "
+            "(for example 'RTX 5090'); check-in mode defaults to RTX 5090"
+        ),
+    )
+    parser.add_argument(
         "--require-git-tracked",
         action="store_true",
         help="require bundle artifacts to be tracked by git (for check-in verification)",
@@ -199,6 +207,8 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     expected_evidence = str(bundle_dir / "blackwell_smoke_evidence.md")
     expected_check_json = str(bundle_dir / "blackwell_bundle_check.json")
     quoted_expect_backend = shlex.quote(expect_backend)
+    require_device_substring = "RTX 5090"
+    quoted_require_device_substring = shlex.quote(require_device_substring)
     quoted_check_json = shlex.quote(expected_check_json)
     expected_snippets = [
         "# Blackwell Smoke Bundle Runbook",
@@ -230,6 +240,13 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
     if not any(snippet in runbook_text for snippet in check_json_snippets):
         raise RuntimeError(f"runbook markdown missing snippet: {expected_check_json}")
 
+    require_device_snippets = [
+        f"--require-device-substring {require_device_substring}",
+        f"--require-device-substring {quoted_require_device_substring}",
+    ]
+    if not any(snippet in runbook_text for snippet in require_device_snippets):
+        raise RuntimeError(f"runbook markdown missing snippet: {require_device_snippets[0]}")
+
     has_direct_command = "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_text
     has_helper_command = "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_text
     if not has_direct_command and not has_helper_command:
@@ -260,6 +277,7 @@ def _write_check_report(
     require_blackwell: bool,
     require_git_tracked: bool,
     require_real_bundle: bool,
+    require_device_substring: str,
 ) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -271,6 +289,7 @@ def _write_check_report(
         "require_blackwell": require_blackwell,
         "require_git_tracked": require_git_tracked,
         "require_real_bundle": require_real_bundle,
+        "require_device_substring": require_device_substring,
         "artifact_sha256": {
             label: _sha256_file(file_path)
             for label, file_path in paths.items()
@@ -287,6 +306,7 @@ def run_bundle_check(
     require_blackwell: bool,
     require_git_tracked: bool,
     require_real_bundle: bool,
+    require_device_substring: str,
     output_check_json: str,
 ) -> str:
     effective_require_blackwell = require_blackwell or check_in
@@ -302,7 +322,12 @@ def run_bundle_check(
     payload = _load_artifact(str(paths["artifact_json"]))
     if require_real_bundle:
         _assert_real_bundle_payload(payload, paths["artifact_json"])
-    selected_backend, _capability = _validate_artifact(payload, expect_backend, effective_require_blackwell)
+    selected_backend, _capability = _validate_artifact(
+        payload,
+        expect_backend,
+        effective_require_blackwell,
+        require_device_substring,
+    )
 
     status_line = _load_status_line(str(paths["status_line"]))
     status_backend = _validate_status_line_consistency(payload, status_line)
@@ -326,6 +351,7 @@ def run_bundle_check(
             require_blackwell=effective_require_blackwell,
             require_git_tracked=effective_require_git_tracked,
             require_real_bundle=require_real_bundle,
+            require_device_substring=require_device_substring,
         )
 
     return selected_backend
@@ -336,6 +362,7 @@ def main() -> None:
     bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     effective_require_blackwell = args.require_blackwell or args.check_in
     effective_require_git_tracked = args.require_git_tracked or args.check_in
+    effective_require_device_substring = args.require_device_substring or ("RTX 5090" if args.check_in else "")
 
     if args.dry_run:
         print(
@@ -346,6 +373,7 @@ def main() -> None:
             f"require_blackwell={effective_require_blackwell} "
             f"require_git_tracked={effective_require_git_tracked} "
             f"require_real_bundle={args.require_real_bundle} "
+            f"require_device_substring={effective_require_device_substring or '<none>'} "
             f"output_check_json={args.output_check_json or '<none>'}"
         )
         return
@@ -357,6 +385,7 @@ def main() -> None:
         require_blackwell=args.require_blackwell,
         require_git_tracked=args.require_git_tracked,
         require_real_bundle=args.require_real_bundle,
+        require_device_substring=effective_require_device_substring,
         output_check_json=args.output_check_json,
     )
 

@@ -38,6 +38,7 @@ def test_main_writes_validated_artifact_bundle(tmp_path, monkeypatch, capsys):
     runbook_content = runbook_md.read_text(encoding="utf-8")
     assert "python -m scripts.run_blackwell_smoke_bundle" in runbook_content
     assert f"--output-dir {output_dir}" in runbook_content
+    assert "--require-device-substring" in runbook_content
     assert "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_content
     assert "--output-check-json" in runbook_content
     assert f"{output_dir}/blackwell_bundle_check.json" in runbook_content
@@ -84,6 +85,7 @@ def test_main_optionally_runs_bundle_checker_and_writes_receipt(tmp_path, monkey
         "require_blackwell": True,
         "require_git_tracked": False,
         "require_real_bundle": False,
+        "require_device_substring": "RTX 5090",
         "output_check_json": str(expected_receipt),
     }
 
@@ -202,6 +204,7 @@ def test_main_dry_run_writes_runbook_without_cuda_probe(tmp_path, monkeypatch, c
     assert "bundle_dry_run_ok" in stdout
     assert f"artifact_json={output_dir / 'flash_backend_smoke.json'}" in stdout
     assert "run_bundle_check=False" in stdout
+    assert "require_device_substring=RTX 5090" in stdout
     assert "check_json=<none>" in stdout
 
 
