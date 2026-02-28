@@ -5,6 +5,7 @@ python -m scripts.run_pilot_check_in --artifacts-dir auto --artifacts-root artif
 """
 
 import argparse
+import json
 from pathlib import Path
 
 from scripts.check_pilot_sweep_artifacts import run_pilot_bundle_check
@@ -117,6 +118,19 @@ def _classify_artifacts_dir(
     missing_files = [name for name in (ranked_json, finalists_json, finalists_md) if not (artifacts_dir / name).is_file()]
     if missing_files:
         return f"missing files: {', '.join(missing_files)}"
+
+    ranked_json_path = artifacts_dir / ranked_json
+    try:
+        ranked_payload = json.loads(ranked_json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return f"malformed ranked JSON ({exc.msg})"
+
+    if not isinstance(ranked_payload, dict):
+        return "ranked JSON payload must be an object"
+    if ranked_payload.get("is_sample") is True:
+        return "ranked JSON payload marks is_sample=true"
+    if not isinstance(ranked_payload.get("ranked_runs"), list):
+        return "ranked JSON missing ranked_runs list"
     return "real"
 
 

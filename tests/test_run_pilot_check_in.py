@@ -1,4 +1,5 @@
 import os
+import json
 
 import pytest
 
@@ -7,7 +8,10 @@ from scripts import run_pilot_check_in as runner
 
 def _write_artifact_files(artifacts_dir):
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    (artifacts_dir / "pilot_ranked_runs.json").write_text("{}\n", encoding="utf-8")
+    (artifacts_dir / "pilot_ranked_runs.json").write_text(
+        json.dumps({"ranked_runs": []}) + "\n",
+        encoding="utf-8",
+    )
     (artifacts_dir / "stage2_finalists.json").write_text("{}\n", encoding="utf-8")
     (artifacts_dir / "stage2_finalists.md").write_text("# fixture\n", encoding="utf-8")
 
@@ -311,3 +315,56 @@ def test_main_auto_rejection_error_lists_candidate_reasons(tmp_path, monkeypatch
         f"{incomplete_artifacts}: missing files: stage2_finalists.json, stage2_finalists.md"
         in message
     )
+
+
+def test_main_auto_rejects_payload_marked_sample_candidates(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    payload_sample = artifacts_root / "run_payload_flagged"
+    _write_artifact_files(payload_sample)
+
+    ranked_payload = json.loads((payload_sample / "pilot_ranked_runs.json").read_text(encoding="utf-8"))
+    ranked_payload["is_sample"] = True
+    (payload_sample / "pilot_ranked_runs.json").write_text(json.dumps(ranked_payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        runner.main()
+
+    message = str(exc_info.value)
+    assert "rejected 1 candidate bundle(s)" in message
+    assert f"{payload_sample}: ranked JSON payload marks is_sample=true" in message
+
+
+def test_main_auto_rejects_malformed_ranked_json_candidates(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    malformed = artifacts_root / "run_malformed"
+    _write_artifact_files(malformed)
+    (malformed / "pilot_ranked_runs.json").write_text("{\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        runner.main()
+
+    message = str(exc_info.value)
+    assert "rejected 1 candidate bundle(s)" in message
+    assert f"{malformed}: malformed ranked JSON" in message
