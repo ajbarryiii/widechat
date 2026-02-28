@@ -9,6 +9,7 @@ from pathlib import Path
 
 from scripts.check_blackwell_evidence_bundle import _resolve_bundle_dir as _resolve_bundle_dir_from_checker
 from scripts.check_blackwell_evidence_bundle import run_bundle_check
+from scripts.check_blackwell_evidence_bundle import run_bundle_preflight
 
 
 def _parse_args() -> argparse.Namespace:
@@ -44,6 +45,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="only resolve paths and print planned checker invocation",
     )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="validate required bundle files before strict check-in validation",
+    )
     return parser.parse_args()
 
 
@@ -53,8 +59,23 @@ def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
 
 def main() -> None:
     args = _parse_args()
+    if args.preflight and args.dry_run:
+        raise RuntimeError("--preflight and --dry-run are mutually exclusive")
+
     bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     output_check_json = args.output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
+
+    if args.preflight:
+        run_bundle_preflight(
+            bundle_dir=bundle_dir,
+            require_real_bundle=not args.allow_sample_bundle,
+        )
+        print(
+            "blackwell_check_in_preflight_ok "
+            f"bundle_dir={bundle_dir} "
+            f"require_real_bundle={not args.allow_sample_bundle}"
+        )
+        return
 
     if args.dry_run:
         print(

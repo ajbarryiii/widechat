@@ -133,6 +133,81 @@ def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, caps
     assert "require_device_substring=RTX 5090" in stdout
 
 
+def test_main_preflight_runs_preflight_and_skips_checker(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+    calls = {}
+
+    def _fake_run_bundle_preflight(**kwargs):
+        calls.update(kwargs)
+
+    def _fake_run_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in preflight mode")
+
+    monkeypatch.setattr(runner, "run_bundle_preflight", _fake_run_bundle_preflight)
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+        ],
+    )
+
+    runner.main()
+
+    assert calls["bundle_dir"] == bundle_dir
+    assert calls["require_real_bundle"] is True
+
+    stdout = capsys.readouterr().out
+    assert "blackwell_check_in_preflight_ok" in stdout
+    assert f"bundle_dir={bundle_dir}" in stdout
+
+
+def test_main_preflight_honors_allow_sample_bundle(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "artifacts" / "blackwell" / "sample_bundle"
+    calls = {}
+
+    def _fake_run_bundle_preflight(**kwargs):
+        calls.update(kwargs)
+
+    monkeypatch.setattr(runner, "run_bundle_preflight", _fake_run_bundle_preflight)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--allow-sample-bundle",
+        ],
+    )
+
+    runner.main()
+
+    assert calls["bundle_dir"] == bundle_dir
+    assert calls["require_real_bundle"] is False
+
+
+def test_main_rejects_preflight_dry_run_combination(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        runner.main()
+
+
 def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.chdir(repo_root)

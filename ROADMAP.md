@@ -170,6 +170,7 @@ Examples:
               - [x] Expand checker auto-discovery candidate scanning to include runbook-only/dry-run directories so strict check-in failures surface missing-artifact diagnostics for those emitted paths.
               - [x] Keep generated smoke runbooks/checkers consistent with custom checker-receipt paths (`--output-check-json`) so one-device evidence workflows can override receipt locations without runbook drift.
               - [x] Add `--dry-run` mode in `scripts.run_blackwell_check_in` so operators can resolve/record canonical bundle + receipt paths before strict check-in execution.
+              - [x] Add strict-helper preflight mode in `scripts.run_blackwell_check_in` (`--preflight`) so operators can validate required bundle files/real-bundle guardrails before strict check-in execution.
               - [x] Add reproducible local Blackwell evidence fixture bundle (`artifacts/blackwell/sample_bundle/*`) plus regression coverage to keep `scripts.run_blackwell_check_in` receipt output in sync with checked-in artifacts.
               - [x] Add strict real-artifact guardrails to check-in validation (`--require-real-bundle` in checker + default-on in `scripts.run_blackwell_check_in`, with `--allow-sample-bundle` override for fixture regression tests) so check-in commands fail fast when pointed at sample fixture bundles.
               - [x] Add `require_real_bundle` to machine-readable checker receipts (`--output-check-json`) with regression coverage so check-in evidence captures whether strict real-artifact enforcement was active.
