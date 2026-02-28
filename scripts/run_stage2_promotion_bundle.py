@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from nanochat.pilot_sweep import format_finalists_summary, select_finalists
+from scripts.check_pilot_sweep_artifacts import run_pilot_bundle_check
 from scripts.pilot_promote import _load_ranked_runs, _validate_stage2_finalists
 
 
@@ -45,6 +46,16 @@ def _parse_args() -> argparse.Namespace:
         "--output-runbook-md",
         default="",
         help="optional markdown path to write a promotion/check-in runbook",
+    )
+    parser.add_argument(
+        "--run-check-in",
+        action="store_true",
+        help="run strict offline check-in validation after writing finalists artifacts",
+    )
+    parser.add_argument(
+        "--output-check-json",
+        default="",
+        help="optional checker receipt path (defaults to <output-dir>/pilot_bundle_check.json when --run-check-in is set)",
     )
     return parser.parse_args()
 
@@ -103,6 +114,8 @@ def _write_runbook_md(
     min_finalists: int,
     max_finalists: int,
     require_real_input: bool,
+    run_check_in: bool,
+    output_check_json: str,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     command_lines = [
@@ -115,6 +128,12 @@ def _write_runbook_md(
     if require_real_input:
         command_lines[-1] += " \\"
         command_lines.append("  --require-real-input")
+    if run_check_in:
+        command_lines[-1] += " \\"
+        command_lines.append("  --run-check-in")
+        if output_check_json:
+            command_lines[-1] += " \\"
+            command_lines.append(f"  --output-check-json {output_check_json}")
 
     lines = [
         "# Stage 2 Promotion Bundle Runbook",
@@ -176,6 +195,19 @@ def main() -> None:
     )
 
     runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
+    check_json_path: Path | None = None
+    if args.run_check_in:
+        check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
+        run_pilot_bundle_check(
+            ranked_json_path=Path(args.input_json),
+            finalists_json_path=finalists_json,
+            finalists_md_path=finalists_md,
+            require_real_input=False,
+            require_git_tracked=False,
+            check_in=True,
+            output_check_json=str(check_json_path),
+        )
+
     if runbook_md is not None:
         _write_runbook_md(
             path=runbook_md,
@@ -186,6 +218,8 @@ def main() -> None:
             min_finalists=args.min_finalists,
             max_finalists=args.max_finalists,
             require_real_input=args.require_real_input,
+            run_check_in=args.run_check_in,
+            output_check_json=str(check_json_path) if check_json_path is not None else args.output_check_json,
         )
 
     print(
@@ -193,6 +227,7 @@ def main() -> None:
         f"finalists={len(finalists)} "
         f"json={finalists_json} "
         f"md={finalists_md}"
+        + (f" check_json={check_json_path}" if check_json_path is not None else "")
         + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
     )
 

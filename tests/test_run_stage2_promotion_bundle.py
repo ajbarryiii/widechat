@@ -248,3 +248,97 @@ def test_main_writes_runbook_when_requested(tmp_path, monkeypatch, capsys):
 
     stdout = capsys.readouterr().out
     assert f"runbook_md={runbook_md}" in stdout
+
+
+def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "artifacts"
+    output_check_json = tmp_path / "receipts" / "stage2_check.json"
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            },
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 2,
+                "disqualify_reason": None,
+            },
+        ]
+    }
+    input_json.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    check_call: dict[str, object] = {}
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        check_call.update(kwargs)
+        return 2
+
+    monkeypatch.setattr(bundle, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+            "--run-check-in",
+            "--output-check-json",
+            str(output_check_json),
+        ],
+    )
+
+    bundle.main()
+
+    assert check_call["ranked_json_path"] == Path(input_json)
+    assert check_call["finalists_json_path"] == output_dir / "stage2_finalists.json"
+    assert check_call["finalists_md_path"] == output_dir / "stage2_finalists.md"
+    assert check_call["check_in"] is True
+    assert check_call["output_check_json"] == str(output_check_json)
+
+    stdout = capsys.readouterr().out
+    assert f"check_json={output_check_json}" in stdout
+
+
+def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
+    runbook_md = tmp_path / "stage2_runbook.md"
+    check_json = tmp_path / "checks" / "bundle.json"
+
+    bundle._write_runbook_md(
+        path=runbook_md,
+        input_json="artifacts/pilot/pilot_ranked_runs.json",
+        output_dir="artifacts/pilot",
+        finalists_json=Path("artifacts/pilot/stage2_finalists.json"),
+        finalists_md=Path("artifacts/pilot/stage2_finalists.md"),
+        min_finalists=2,
+        max_finalists=3,
+        require_real_input=True,
+        run_check_in=True,
+        output_check_json=str(check_json),
+    )
+
+    runbook = runbook_md.read_text(encoding="utf-8")
+    assert "--require-real-input" in runbook
+    assert "--run-check-in" in runbook
+    assert f"--output-check-json {check_json}" in runbook
