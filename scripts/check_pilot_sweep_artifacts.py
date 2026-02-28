@@ -181,19 +181,27 @@ def _write_check_receipt(
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def main() -> None:
-    args = _parse_args()
-    require_real_input = args.require_real_input or args.check_in
-    require_git_tracked = args.require_git_tracked or args.check_in
+def run_pilot_bundle_check(
+    *,
+    ranked_json_path: Path,
+    finalists_json_path: Path,
+    finalists_md_path: Path,
+    require_real_input: bool,
+    require_git_tracked: bool,
+    check_in: bool,
+    output_check_json: str = "",
+) -> int:
+    effective_require_real_input = require_real_input or check_in
+    effective_require_git_tracked = require_git_tracked or check_in
 
     paths = {
-        "ranked_json": Path(args.ranked_json),
-        "finalists_json": Path(args.finalists_json),
-        "finalists_md": Path(args.finalists_md),
+        "ranked_json": ranked_json_path,
+        "finalists_json": finalists_json_path,
+        "finalists_md": finalists_md_path,
     }
     _assert_files_exist(paths)
-    ranked_runs = _load_ranked_runs(str(paths["ranked_json"]), require_real_input=require_real_input)
-    if require_git_tracked:
+    ranked_runs = _load_ranked_runs(str(paths["ranked_json"]), require_real_input=effective_require_real_input)
+    if effective_require_git_tracked:
         _assert_git_tracked(paths)
 
     finalists_payload = _load_finalists_payload(paths["finalists_json"])
@@ -212,22 +220,39 @@ def main() -> None:
         expected_finalists=expected_finalists,
     )
 
-    if args.output_check_json:
+    if output_check_json:
         _write_check_receipt(
-            path=Path(args.output_check_json),
+            path=Path(output_check_json),
             ranked_json_path=paths["ranked_json"],
             finalists_json_path=paths["finalists_json"],
             finalists_md_path=paths["finalists_md"],
             finalists_count=len(expected_finalists),
-            require_real_input=require_real_input,
-            require_git_tracked=require_git_tracked,
-            check_in=args.check_in,
+            require_real_input=effective_require_real_input,
+            require_git_tracked=effective_require_git_tracked,
+            check_in=check_in,
         )
+    return len(expected_finalists)
+
+
+def main() -> None:
+    args = _parse_args()
+    ranked_json_path = Path(args.ranked_json)
+    finalists_json_path = Path(args.finalists_json)
+    finalists_md_path = Path(args.finalists_md)
+    finalists_count = run_pilot_bundle_check(
+        ranked_json_path=ranked_json_path,
+        finalists_json_path=finalists_json_path,
+        finalists_md_path=finalists_md_path,
+        require_real_input=args.require_real_input,
+        require_git_tracked=args.require_git_tracked,
+        check_in=args.check_in,
+        output_check_json=args.output_check_json,
+    )
 
     status_line = (
         "pilot_bundle_check_ok "
-        f"finalists={len(expected_finalists)} "
-        f"ranked_json={paths['ranked_json']}"
+        f"finalists={finalists_count} "
+        f"ranked_json={ranked_json_path}"
     )
     if args.output_check_json:
         status_line += f" check_json={args.output_check_json}"
