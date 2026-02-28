@@ -7,6 +7,7 @@ python -m scripts.run_pilot_check_in --artifacts-dir auto --artifacts-root artif
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from scripts.check_pilot_sweep_artifacts import run_pilot_bundle_check
@@ -77,6 +78,11 @@ def _parse_args() -> argparse.Namespace:
         "--preflight",
         action="store_true",
         help="validate required artifact/checker inputs before strict check-in",
+    )
+    parser.add_argument(
+        "--output-preflight-json",
+        default="",
+        help="optional path to write machine-readable preflight receipt JSON",
     )
     return parser.parse_args()
 
@@ -247,6 +253,7 @@ def _run_preflight(
     finalists_md: Path,
     bundle_json_path: Path | None,
     output_check_json: str,
+    output_preflight_json: str,
     allow_sample_input: bool,
 ) -> None:
     missing = [
@@ -269,6 +276,24 @@ def _run_preflight(
     if bundle_json_path is not None:
         git_tracked_paths[str(bundle_json_path)] = _is_git_tracked(bundle_json_path)
 
+    if output_preflight_json:
+        preflight_path = Path(output_preflight_json)
+        preflight_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "status": "ok",
+            "command": [*sys.argv],
+            "artifacts_dir": str(artifacts_dir),
+            "ranked_json": str(ranked_json),
+            "finalists_json": str(finalists_json),
+            "finalists_md": str(finalists_md),
+            "check_json": output_check_json,
+            "allow_sample_input": allow_sample_input,
+            "git_tracked": git_tracked_paths,
+        }
+        if bundle_json_path is not None:
+            payload["bundle_json"] = str(bundle_json_path)
+        preflight_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     print(
         "pilot_check_in_preflight_ok "
         f"artifacts_dir={artifacts_dir} "
@@ -279,6 +304,7 @@ def _run_preflight(
         f"allow_sample_input={allow_sample_input} "
         f"git_tracked={json.dumps(git_tracked_paths, sort_keys=True)}"
         + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+        + (f" preflight_json={output_preflight_json}" if output_preflight_json else "")
     )
 
 
@@ -324,6 +350,7 @@ def main() -> None:
             finalists_md=finalists_md,
             bundle_json_path=bundle_json_path,
             output_check_json=output_check_json,
+            output_preflight_json=args.output_preflight_json,
             allow_sample_input=args.allow_sample_input,
         )
         return

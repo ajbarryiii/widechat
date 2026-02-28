@@ -238,6 +238,53 @@ def test_main_preflight_rejects_missing_required_files(tmp_path, monkeypatch):
         runner.main()
 
 
+def test_main_preflight_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot"
+    _write_artifact_files(artifacts_dir)
+    preflight_json = tmp_path / "receipts" / "pilot_preflight.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert f"preflight_json={preflight_json}" in stdout
+
+    payload = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert payload == {
+        "status": "ok",
+        "command": [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+        "artifacts_dir": str(artifacts_dir),
+        "ranked_json": str(artifacts_dir / "pilot_ranked_runs.json"),
+        "finalists_json": str(artifacts_dir / "stage2_finalists.json"),
+        "finalists_md": str(artifacts_dir / "stage2_finalists.md"),
+        "check_json": str(artifacts_dir / "pilot_bundle_check.json"),
+        "allow_sample_input": False,
+        "git_tracked": {
+            str(artifacts_dir / "pilot_ranked_runs.json"): False,
+            str(artifacts_dir / "stage2_finalists.json"): False,
+            str(artifacts_dir / "stage2_finalists.md"): False,
+        },
+    }
+
+
 def test_main_writes_check_markdown_summary(tmp_path, monkeypatch, capsys):
     artifacts_dir = tmp_path / "pilot"
     check_md = tmp_path / "receipts" / "pilot_check_in.md"
