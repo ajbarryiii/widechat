@@ -107,6 +107,31 @@ def test_main_allow_sample_input_disables_real_input_guard(tmp_path, monkeypatch
     assert calls["allow_sample_input_in_check_in"] is True
 
 
+def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot"
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--dry-run",
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert "pilot_check_in_dry_run_ok" in stdout
+    assert f"artifacts_dir={artifacts_dir}" in stdout
+    assert f"check_json={artifacts_dir / 'pilot_bundle_check.json'}" in stdout
+
+
 def test_main_auto_selects_latest_real_artifacts_dir(tmp_path, monkeypatch):
     artifacts_root = tmp_path / "artifacts" / "pilot"
     older_artifacts = artifacts_root / "run_older"

@@ -218,10 +218,11 @@ Examples:
                   - [x] Add single-command strict pilot check-in helper (`python -m scripts.run_pilot_check_in --artifacts-dir ...`) that defaults `--output-check-json` to `<artifacts-dir>/pilot_bundle_check.json` and always enforces checker `--check-in` requirements.
                   - [x] Mark sample pilot ranking fixtures with `"is_sample": true` and add check-in regression coverage so `--check-in` rejects relabeled sample artifacts via payload metadata, not filename alone.
                   - [ ] Execute `python -m scripts.run_pilot_check_in --artifacts-dir ...` against emitted real target-GPU ranking/finalist artifacts during check-in.
-                     - [x] Add explicit sample-fixture override to strict helper (`--allow-sample-input`) while defaulting to real-input enforcement, with regression coverage for both default and override paths.
-                     - [x] Fix strict-helper sample override plumbing so `--allow-sample-input` bypasses only the real-input guard (while preserving `--check-in` git-tracked checks) for fixture-based end-to-end validation.
-                     - [x] Add auto-discovery mode to strict helper (`--artifacts-dir auto`, `--artifacts-root`) so check-in commands can resolve the latest real artifact bundle and fail fast when only sample directories exist.
-                     - [x] Improve auto-discovery failure diagnostics in strict helper to report rejected artifact-bundle candidates (for example sample-path and missing-file reasons), so target-GPU check-in operators can fix bundle issues without trial-and-error.
+                      - [x] Add explicit sample-fixture override to strict helper (`--allow-sample-input`) while defaulting to real-input enforcement, with regression coverage for both default and override paths.
+                      - [x] Fix strict-helper sample override plumbing so `--allow-sample-input` bypasses only the real-input guard (while preserving `--check-in` git-tracked checks) for fixture-based end-to-end validation.
+                      - [x] Add auto-discovery mode to strict helper (`--artifacts-dir auto`, `--artifacts-root`) so check-in commands can resolve the latest real artifact bundle and fail fast when only sample directories exist.
+                      - [x] Improve auto-discovery failure diagnostics in strict helper to report rejected artifact-bundle candidates (for example sample-path and missing-file reasons), so target-GPU check-in operators can fix bundle issues without trial-and-error.
+                      - [x] Add strict-helper dry-run mode (`--dry-run`) that resolves artifact/check-receipt paths and prints a canonical preflight status line without executing checker validation, so target-GPU operators can verify invocation inputs before running check-in.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.
    - [x] Disqualify unstable runs.

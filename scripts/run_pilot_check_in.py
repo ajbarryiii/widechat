@@ -47,6 +47,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="allow sample/fixture ranked-run inputs (for local regression checks)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only resolve paths and print planned checker invocation",
+    )
     return parser.parse_args()
 
 
@@ -139,6 +144,18 @@ def main() -> None:
     finalists_json = artifacts_dir / args.finalists_json
     finalists_md = artifacts_dir / args.finalists_md
     output_check_json = args.output_check_json or str(artifacts_dir / "pilot_bundle_check.json")
+
+    if args.dry_run:
+        print(
+            "pilot_check_in_dry_run_ok "
+            f"artifacts_dir={artifacts_dir} "
+            f"ranked_json={ranked_json} "
+            f"finalists_json={finalists_json} "
+            f"finalists_md={finalists_md} "
+            f"check_json={output_check_json} "
+            f"allow_sample_input={args.allow_sample_input}"
+        )
+        return
 
     finalists_count = run_pilot_bundle_check(
         ranked_json_path=ranked_json,
