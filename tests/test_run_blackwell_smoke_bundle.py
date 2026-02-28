@@ -39,6 +39,16 @@ def test_main_writes_validated_artifact_bundle(tmp_path, monkeypatch, capsys):
     assert "python -m scripts.run_blackwell_smoke_bundle" in runbook_content
     assert f"--output-dir {output_dir}" in runbook_content
     assert "--require-device-substring" in runbook_content
+    assert "## Resolved invocation" in runbook_content
+    expected_resolved_command = " ".join(
+        [
+            "python -m scripts.run_blackwell_smoke_bundle",
+            f"--output-dir {shlex.quote(str(output_dir))}",
+            "--expect-backend fa4",
+            "--require-device-substring 'RTX 5090'",
+        ]
+    )
+    assert expected_resolved_command in runbook_content
     assert "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_content
     assert "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_content
     assert "--check-in" in runbook_content
@@ -183,6 +193,59 @@ def test_main_honors_custom_check_receipt_path_in_runbook_and_checker_call(tmp_p
     stdout = capsys.readouterr().out
     assert f"check_json={custom_receipt}" in stdout
     assert "strict_check_json=<none>" in stdout
+
+
+def test_main_runbook_includes_resolved_invocation_with_optional_checker_flags(tmp_path, monkeypatch):
+    output_dir = tmp_path / "blackwell artifacts"
+    custom_check_json = tmp_path / "receipts" / "bundle check.json"
+    custom_strict_check_json = tmp_path / "receipts" / "strict check.json"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    calls = []
+
+    def _fake_run_bundle_check(**kwargs):
+        calls.append(kwargs)
+        return "fa4"
+
+    monkeypatch.setattr(bundle, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
+    monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--run-bundle-check",
+            "--output-check-json",
+            str(custom_check_json),
+            "--run-strict-check-in",
+            "--output-strict-check-json",
+            str(custom_strict_check_json),
+        ],
+    )
+
+    bundle.main()
+
+    runbook_md = output_dir / "blackwell_smoke_runbook.md"
+    runbook_content = runbook_md.read_text(encoding="utf-8")
+    expected_command = " ".join(
+        [
+            "python -m scripts.run_blackwell_smoke_bundle",
+            f"--output-dir {shlex.quote(str(output_dir))}",
+            "--expect-backend fa4",
+            "--require-device-substring 'RTX 5090'",
+            "--run-bundle-check",
+            f"--output-check-json {shlex.quote(str(custom_check_json))}",
+            "--run-strict-check-in",
+            f"--output-strict-check-json {shlex.quote(str(custom_strict_check_json))}",
+        ]
+    )
+    assert len(calls) == 2
+    assert "## Resolved invocation" in runbook_content
+    assert expected_command in runbook_content
 
 
 def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):

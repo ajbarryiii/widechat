@@ -170,6 +170,7 @@ def _write_runbook_markdown(
     check_json_path: str,
     strict_check_json_path: str,
     require_device_substring: str,
+    resolved_bundle_command: str,
 ) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,6 +188,11 @@ def _write_runbook_markdown(
         f"  --output-dir {quoted_output_dir} \\",
         f"  --expect-backend {quoted_expect_backend} \\",
         f"  --require-device-substring {quoted_require_device_substring}",
+        "```",
+        "",
+        "## Resolved invocation",
+        "```bash",
+        resolved_bundle_command,
         "```",
         "",
         "## Expected outputs",
@@ -351,6 +357,7 @@ def main() -> None:
         check_json_path=output_check_json,
         strict_check_json_path=output_strict_check_json,
         require_device_substring=args.require_device_substring,
+        resolved_bundle_command=resolved_command,
     )
 
     if args.dry_run:
