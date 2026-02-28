@@ -18,12 +18,25 @@ from scripts.validate_blackwell_smoke_artifact import (
 )
 
 
+_REQUIRED_BUNDLE_FILES = (
+    "flash_backend_smoke.json",
+    "flash_backend_status.log",
+    "blackwell_smoke_evidence.md",
+    "blackwell_smoke_runbook.md",
+)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate recorded Blackwell smoke bundle directory")
     parser.add_argument(
         "--bundle-dir",
-        default="artifacts/blackwell_smoke",
-        help="directory emitted by scripts.run_blackwell_smoke_bundle",
+        default="auto",
+        help="directory emitted by scripts.run_blackwell_smoke_bundle, or 'auto' to discover latest real bundle",
+    )
+    parser.add_argument(
+        "--bundle-root",
+        default="artifacts/blackwell",
+        help="bundle search root used when --bundle-dir=auto",
     )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4")
     parser.add_argument(
@@ -61,6 +74,32 @@ def _required_paths(bundle_dir: Path) -> dict[str, Path]:
         "evidence_md": bundle_dir / "blackwell_smoke_evidence.md",
         "runbook_md": bundle_dir / "blackwell_smoke_runbook.md",
     }
+
+
+def _is_real_bundle_dir(bundle_dir: Path) -> bool:
+    if "sample_bundle" in bundle_dir.parts:
+        return False
+    return all((bundle_dir / filename).is_file() for filename in _REQUIRED_BUNDLE_FILES)
+
+
+def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
+    if bundle_dir_arg != "auto":
+        return Path(bundle_dir_arg)
+
+    bundle_root = Path(bundle_root_arg)
+    if not bundle_root.is_dir():
+        raise RuntimeError(
+            f"bundle_root does not exist: {bundle_root}; pass --bundle-dir explicitly or emit a bundle first"
+        )
+
+    candidates = [path for path in bundle_root.rglob("flash_backend_smoke.json") if _is_real_bundle_dir(path.parent)]
+    if not candidates:
+        raise RuntimeError(
+            f"no real Blackwell bundle found under {bundle_root}; run scripts.run_blackwell_smoke_bundle on RTX 5090 first"
+        )
+
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return candidates[0].parent
 
 
 def _assert_files_exist(paths: dict[str, Path]) -> None:
@@ -219,8 +258,9 @@ def run_bundle_check(
 
 def main() -> None:
     args = _parse_args()
+    bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     selected_backend = run_bundle_check(
-        bundle_dir=Path(args.bundle_dir),
+        bundle_dir=bundle_dir,
         expect_backend=args.expect_backend,
         check_in=args.check_in,
         require_blackwell=args.require_blackwell,
@@ -229,7 +269,7 @@ def main() -> None:
         output_check_json=args.output_check_json,
     )
 
-    print(f"bundle_check_ok selected={selected_backend} bundle_dir={args.bundle_dir}")
+    print(f"bundle_check_ok selected={selected_backend} bundle_dir={bundle_dir}")
 
 
 if __name__ == "__main__":

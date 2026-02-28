@@ -1,4 +1,5 @@
 import json
+import os
 import shlex
 import subprocess
 
@@ -376,3 +377,75 @@ def test_main_check_report_includes_require_real_bundle(tmp_path, monkeypatch):
 
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["require_real_bundle"] is True
+
+
+def test_main_auto_selects_latest_real_bundle(tmp_path, monkeypatch, capsys):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    older_bundle = bundle_root / "run_older"
+    latest_bundle = bundle_root / "run_latest"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_valid_bundle(older_bundle)
+    _write_valid_bundle(latest_bundle)
+    _write_valid_bundle(sample_bundle)
+
+    os.utime(older_bundle / "flash_backend_smoke.json", (100, 100))
+    os.utime(latest_bundle / "flash_backend_smoke.json", (200, 200))
+    os.utime(sample_bundle / "flash_backend_smoke.json", (300, 300))
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--check-in",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert f"bundle_dir={latest_bundle}" in stdout
+
+
+def test_main_auto_rejects_when_only_sample_bundle_exists(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_valid_bundle(sample_bundle)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real Blackwell bundle found"):
+        checker.main()
+
+
+def test_main_auto_rejects_missing_bundle_root(tmp_path, monkeypatch):
+    missing_root = tmp_path / "does_not_exist"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(missing_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="bundle_root does not exist"):
+        checker.main()
