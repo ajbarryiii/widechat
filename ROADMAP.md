@@ -255,6 +255,7 @@ Examples:
               - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
              - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
                 - [x] Add blocked-receipt markdown output in `scripts.pilot_sweep.py` (`--output-blocked-md`) so failed preflight/runtime attempts can persist check-in-friendly diagnostics when target-GPU execution is unavailable.
+                - [x] Auto-create parent directories for pilot ranking/finalist outputs (`--output-json`, `--output-md`, `--output-finalists-json`, `--output-finalists-md`, `--output-runbook-md`) so resumed target-GPU sweeps do not fail on missing nested report directories.
                  - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
                      - [x] Add pilot artifact-checker auto-discovery mode (`--artifacts-dir auto`, `--artifacts-root`) with candidate-rejection diagnostics so strict check-in commands can target the latest real bundle without hand-editing artifact paths.
                      - [x] Add machine-readable pilot bundle checker receipt output (`--output-check-json`) so check-in reviews can verify the exact checker invocation/result from a committed artifact.

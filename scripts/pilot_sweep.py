@@ -121,6 +121,12 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
 def _write_blocked_markdown(
     *,
     output_path: str,
@@ -463,9 +469,7 @@ def _run(args: argparse.Namespace) -> None:
     if args.preflight:
         receipt = _run_preflight(args=args, selected_targets=selected_targets, is_full_grid=is_full_grid)
         if args.output_preflight_json:
-            output_dir = os.path.dirname(args.output_preflight_json)
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
+            _ensure_parent_dir(args.output_preflight_json)
             with open(args.output_preflight_json, "w", encoding="utf-8") as f:
                 json.dump(receipt, f, indent=2)
         status = "ok" if receipt["ok"] else "fail"
@@ -549,6 +553,7 @@ def _run(args: argparse.Namespace) -> None:
                 finalists_json_path=finalists_json_path,
                 finalists_md_path=finalists_md_path,
             )
+            _ensure_parent_dir(args.output_runbook_md)
             with open(args.output_runbook_md, "w", encoding="utf-8") as f:
                 f.write(runbook)
         return
@@ -583,6 +588,7 @@ def _run(args: argparse.Namespace) -> None:
     ranked_source_sha256 = _stable_json_sha256(ranked_payload)
 
     if args.output_json:
+        _ensure_parent_dir(args.output_json)
         with open(args.output_json, "w", encoding="utf-8") as f:
             json.dump(ranked_payload, f, indent=2)
 
@@ -597,6 +603,7 @@ def _run(args: argparse.Namespace) -> None:
             finalists_summary,
             "",
         ]
+        _ensure_parent_dir(args.output_md)
         with open(args.output_md, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
@@ -607,6 +614,7 @@ def _run(args: argparse.Namespace) -> None:
             "max_finalists": args.max_finalists,
             "selected_finalists": finalists,
         }
+        _ensure_parent_dir(args.output_finalists_json)
         with open(args.output_finalists_json, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
 
@@ -624,6 +632,7 @@ def _run(args: argparse.Namespace) -> None:
                 f"- `{row['config']}`: `--depth {row['depth']} --n-branches {row['n_branches']} --aspect-ratio {row['aspect_ratio']}`"
             )
         lines.append("")
+        _ensure_parent_dir(args.output_finalists_md)
         with open(args.output_finalists_md, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
@@ -635,6 +644,7 @@ def _run(args: argparse.Namespace) -> None:
             finalists_json_path=finalists_json_path,
             finalists_md_path=finalists_md_path,
         )
+        _ensure_parent_dir(args.output_runbook_md)
         with open(args.output_runbook_md, "w", encoding="utf-8") as f:
             f.write(runbook)
 

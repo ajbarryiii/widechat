@@ -842,6 +842,93 @@ def test_main_dry_run_writes_pilot_runbook(tmp_path, monkeypatch):
     assert "--extra-arg --compile" in runbook
 
 
+def test_main_dry_run_creates_parent_dirs_for_runbook(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    runbook_path = tmp_path / "nested" / "runbooks" / "pilot_runbook.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1024",
+            "--device-batch-size",
+            "2",
+            "--pilot-tokens",
+            "102400",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--output-runbook-md",
+            str(runbook_path),
+            "--dry-run",
+        ],
+    )
+
+    pilot_sweep_script.main()
+    assert runbook_path.exists()
+
+
+def test_main_resume_creates_parent_dirs_for_ranking_and_finalists_outputs(tmp_path, monkeypatch):
+    total_batch_size = 1000
+    num_iterations = 100
+    token_budget = total_batch_size * num_iterations
+
+    for index, target in enumerate(pilot_sweep.DEFAULT_PILOT_TARGETS, start=1):
+        _write_run_artifacts(
+            artifacts_dir=str(tmp_path),
+            run_index=index,
+            run_result={
+                "config": target.label,
+                "selected_tok_per_sec": 1000 - index,
+                "min_val_bpb": 4.0 + index * 0.001,
+                "unstable": False,
+                "token_budget": token_budget,
+            },
+            output_text=f"{target.label} output",
+        )
+
+    output_root = tmp_path / "nested" / "reports"
+    ranked_json = output_root / "pilot_ranked_runs.json"
+    ranking_md = output_root / "pilot_ranking.md"
+    finalists_json = output_root / "stage2_finalists.json"
+    finalists_md = output_root / "stage2_finalists.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            str(total_batch_size),
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            str(token_budget),
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--resume-from-artifacts",
+            "--output-json",
+            str(ranked_json),
+            "--output-md",
+            str(ranking_md),
+            "--output-finalists-json",
+            str(finalists_json),
+            "--output-finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+    assert ranked_json.exists()
+    assert ranking_md.exists()
+    assert finalists_json.exists()
+    assert finalists_md.exists()
+
+
 def test_main_partial_targets_skip_ranking_and_preserve_global_artifact_indices(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
