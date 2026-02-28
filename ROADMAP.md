@@ -185,9 +185,10 @@ Examples:
    - [x] Add per-config artifact capture (`--artifacts-dir`) so each pilot run saves raw logs and per-config metrics JSON for later audit/ranking.
    - [ ] Execute the full pilot sweep on target GPU(s) and collect per-config logs/artifacts.
       - [x] Add resumable sweep support (`--resume-from-artifacts`) so interrupted long pilot runs can continue from existing per-config JSON artifacts.
-      - [ ] Use resume mode for the real target-GPU sweep and persist final ranking/finalist artifacts.
-         - [x] Add pilot-sweep finalist artifact outputs (`--max-finalists`, `--output-finalists-json`, `--output-finalists-md`) so resumed sweeps can persist promotion-ready evidence in one run.
-         - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
+       - [ ] Use resume mode for the real target-GPU sweep and persist final ranking/finalist artifacts.
+          - [x] Add pilot-sweep finalist artifact outputs (`--max-finalists`, `--output-finalists-json`, `--output-finalists-md`) so resumed sweeps can persist promotion-ready evidence in one run.
+          - [x] Add resume-artifact preflight validation for log presence plus required metrics/token-budget consistency, so target-GPU resume runs fail fast on incomplete or stale artifacts.
+          - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.
    - [x] Disqualify unstable runs.

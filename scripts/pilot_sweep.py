@@ -128,6 +128,46 @@ def _load_existing_run_artifact(
     return loaded
 
 
+def _validate_resume_run_artifact(
+    loaded_run: dict[str, int | float | bool | str | None],
+    *,
+    artifacts_dir: str,
+    run_index: int,
+    config_label: str,
+    expected_token_budget: int,
+) -> None:
+    log_path, metrics_path = _artifact_paths(artifacts_dir, run_index, config_label)
+    if not os.path.exists(log_path):
+        raise ValueError(
+            "resume artifact is incomplete; expected log file for "
+            f"{config_label}: {log_path}"
+        )
+
+    selected_tok_per_sec = loaded_run.get("selected_tok_per_sec")
+    if isinstance(selected_tok_per_sec, bool) or not isinstance(selected_tok_per_sec, (int, float)):
+        raise ValueError(
+            "resume artifact missing numeric selected_tok_per_sec for "
+            f"{config_label}: {metrics_path}"
+        )
+
+    unstable = loaded_run.get("unstable")
+    if not isinstance(unstable, bool):
+        raise ValueError(
+            f"resume artifact missing boolean unstable for {config_label}: {metrics_path}"
+        )
+
+    token_budget = loaded_run.get("token_budget")
+    if isinstance(token_budget, bool) or not isinstance(token_budget, (int, float)):
+        raise ValueError(
+            f"resume artifact missing numeric token_budget for {config_label}: {metrics_path}"
+        )
+    if int(token_budget) != expected_token_budget:
+        raise ValueError(
+            "resume artifact token_budget mismatch for "
+            f"{config_label}: expected {expected_token_budget}, got {int(token_budget)}"
+        )
+
+
 def main() -> None:
     args = _parse_args()
     if args.resume_from_artifacts and not args.artifacts_dir:
@@ -164,6 +204,13 @@ def main() -> None:
                 config_label=target.label,
             )
             if loaded_run is not None:
+                _validate_resume_run_artifact(
+                    loaded_run,
+                    artifacts_dir=args.artifacts_dir,
+                    run_index=index,
+                    config_label=target.label,
+                    expected_token_budget=run_result["token_budget"],
+                )
                 run_result.update(loaded_run)
                 runs.append(run_result)
                 print(f"resume: using existing artifacts for {target.label}")

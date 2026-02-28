@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 from nanochat import pilot_sweep
 from scripts import pilot_sweep as pilot_sweep_script
-from scripts.pilot_sweep import _artifact_paths, _load_existing_run_artifact, _sanitize_label, _write_run_artifacts
+from scripts.pilot_sweep import (
+    _artifact_paths,
+    _load_existing_run_artifact,
+    _sanitize_label,
+    _validate_resume_run_artifact,
+    _write_run_artifacts,
+)
 from nanochat.pilot_sweep import (
     MAX_RECOMMENDED_EVAL_EVERY,
     MIN_RECOMMENDED_EVAL_EVERY,
@@ -378,6 +384,59 @@ def test_load_existing_run_artifact_rejects_config_mismatch(tmp_path):
 
     with pytest.raises(ValueError, match="artifact config mismatch"):
         _load_existing_run_artifact(str(tmp_path), run_index=1, config_label="12x1")
+
+
+def test_validate_resume_run_artifact_requires_log_file(tmp_path):
+    _log_path, metrics_path = _artifact_paths(str(tmp_path), run_index=1, config_label="12x1")
+    tmp_path.mkdir(exist_ok=True)
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "config": "12x1",
+                "selected_tok_per_sec": 1000,
+                "unstable": False,
+                "token_budget": 100000,
+            },
+            f,
+        )
+
+    loaded = _load_existing_run_artifact(str(tmp_path), run_index=1, config_label="12x1")
+    assert loaded is not None
+
+    with pytest.raises(ValueError, match="expected log file"):
+        _validate_resume_run_artifact(
+            loaded,
+            artifacts_dir=str(tmp_path),
+            run_index=1,
+            config_label="12x1",
+            expected_token_budget=100000,
+        )
+
+
+def test_validate_resume_run_artifact_requires_expected_token_budget(tmp_path):
+    run_result = {
+        "config": "12x1",
+        "selected_tok_per_sec": 1000,
+        "unstable": False,
+        "token_budget": 90000,
+    }
+    _write_run_artifacts(
+        artifacts_dir=str(tmp_path),
+        run_index=1,
+        run_result=run_result,
+        output_text="pilot output",
+    )
+    loaded = _load_existing_run_artifact(str(tmp_path), run_index=1, config_label="12x1")
+    assert loaded is not None
+
+    with pytest.raises(ValueError, match="token_budget mismatch"):
+        _validate_resume_run_artifact(
+            loaded,
+            artifacts_dir=str(tmp_path),
+            run_index=1,
+            config_label="12x1",
+            expected_token_budget=100000,
+        )
 
 
 def test_main_resume_from_artifacts_reuses_saved_runs(tmp_path, monkeypatch):
