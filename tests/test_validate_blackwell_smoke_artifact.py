@@ -58,3 +58,69 @@ def test_validate_artifact_rejects_malformed_capability_list():
 
     with pytest.raises(ValueError, match="cuda_capability"):
         validator._validate_artifact(payload, expect_backend="fa4", require_blackwell=False)
+
+
+def test_load_status_line_rejects_empty_file(tmp_path):
+    path = tmp_path / "flash_backend_status.log"
+    path.write_text("\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="non-empty line"):
+        validator._load_status_line(str(path))
+
+
+def test_validate_status_line_consistency_accepts_matching_payload():
+    payload = {
+        "selected_backend": "fa4",
+        "status_line": "Flash Attention backend selection: selected=fa4, mode=auto",
+        "cuda_available": True,
+        "cuda_capability": [10, 0],
+    }
+
+    parsed = validator._validate_status_line_consistency(payload, payload["status_line"])
+    assert parsed == "fa4"
+
+
+def test_validate_status_line_consistency_rejects_mismatch():
+    payload = {
+        "selected_backend": "fa4",
+        "status_line": "Flash Attention backend selection: selected=fa4, mode=auto",
+        "cuda_available": True,
+        "cuda_capability": [10, 0],
+    }
+
+    with pytest.raises(RuntimeError, match="does not match artifact status_line"):
+        validator._validate_status_line_consistency(payload, "Flash Attention backend selection: selected=sdpa, mode=auto")
+
+
+def test_main_with_status_line_file_reports_ok(tmp_path, monkeypatch, capsys):
+    artifact_path = tmp_path / "flash_backend_smoke.json"
+    status_path = tmp_path / "flash_backend_status.log"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    artifact_payload = {
+        "selected_backend": "fa4",
+        "status_line": status,
+        "cuda_available": True,
+        "device_name": "RTX 5090",
+        "cuda_capability": [10, 0],
+    }
+    artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
+    status_path.write_text(status + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "validate_blackwell_smoke_artifact.py",
+            "--artifact-json",
+            str(artifact_path),
+            "--status-line-file",
+            str(status_path),
+            "--expect-backend",
+            "fa4",
+            "--require-blackwell",
+        ],
+    )
+
+    validator.main()
+
+    stdout = capsys.readouterr().out
+    assert "artifact_ok selected=fa4 capability=sm100 status_line_ok=True" in stdout

@@ -6,11 +6,17 @@ python -m scripts.validate_blackwell_smoke_artifact --artifact-json artifacts/fl
 
 import argparse
 import json
+import re
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate flash backend smoke artifact")
     parser.add_argument("--artifact-json", required=True, help="artifact produced by scripts.flash_backend_smoke --output-json")
+    parser.add_argument(
+        "--status-line-file",
+        default="",
+        help="optional flash_backend_status.log produced by scripts.flash_backend_smoke --output-status-line/--output-dir",
+    )
     parser.add_argument("--expect-backend", choices=["fa4", "fa3", "sdpa"], default="fa4", help="required selected backend")
     parser.add_argument("--require-blackwell", action="store_true", help="require sm100+ CUDA capability in artifact")
     return parser.parse_args()
@@ -25,12 +31,27 @@ def _load_artifact(path: str) -> dict[str, object]:
     return payload
 
 
+def _load_status_line(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        status_line = f.read().strip()
+    if not status_line:
+        raise ValueError("status-line file must include a non-empty line")
+    return status_line
+
+
 def _parse_capability(raw: object) -> tuple[int, int] | None:
     if raw is None:
         return None
     if not isinstance(raw, list) or len(raw) != 2 or not all(isinstance(v, int) for v in raw):
         raise ValueError("cuda_capability must be [major, minor] or null")
     return raw[0], raw[1]
+
+
+def _extract_selected_backend(status_line: str) -> str:
+    match = re.search(r"selected=(fa4|fa3|sdpa)", status_line)
+    if match is None:
+        raise ValueError(f"cannot parse backend from status line: {status_line!r}")
+    return match.group(1)
 
 
 def _validate_artifact(payload: dict[str, object], expect_backend: str, require_blackwell: bool) -> tuple[str, tuple[int, int] | None]:
@@ -57,16 +78,43 @@ def _validate_artifact(payload: dict[str, object], expect_backend: str, require_
     return selected_backend, capability
 
 
+def _validate_status_line_consistency(payload: dict[str, object], status_line: str) -> str:
+    payload_status_line = payload.get("status_line")
+    if not isinstance(payload_status_line, str) or not payload_status_line:
+        raise ValueError("artifact missing status_line string")
+    if status_line != payload_status_line:
+        raise RuntimeError("status-line file does not match artifact status_line")
+
+    selected_backend = payload.get("selected_backend")
+    if not isinstance(selected_backend, str):
+        raise ValueError("artifact missing selected_backend string")
+
+    parsed_backend = _extract_selected_backend(status_line)
+    if parsed_backend != selected_backend:
+        raise RuntimeError(
+            f"status-line backend {parsed_backend} does not match artifact selected_backend {selected_backend}"
+        )
+
+    return parsed_backend
+
+
 def main() -> None:
     args = _parse_args()
     payload = _load_artifact(args.artifact_json)
     selected_backend, capability = _validate_artifact(payload, args.expect_backend, args.require_blackwell)
+    status_line_ok = False
+    if args.status_line_file:
+        status_line = _load_status_line(args.status_line_file)
+        status_line_backend = _validate_status_line_consistency(payload, status_line)
+        if status_line_backend != args.expect_backend:
+            raise RuntimeError(f"expected backend {args.expect_backend}, got {status_line_backend} in status-line file")
+        status_line_ok = True
 
     if capability is None:
         capability_str = "none"
     else:
         capability_str = f"sm{capability[0]}{capability[1]}"
-    print(f"artifact_ok selected={selected_backend} capability={capability_str}")
+    print(f"artifact_ok selected={selected_backend} capability={capability_str} status_line_ok={status_line_ok}")
 
 
 if __name__ == "__main__":

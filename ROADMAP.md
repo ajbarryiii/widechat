@@ -142,6 +142,7 @@ Examples:
   - [x] Add smoke-artifact validation helper (`python -m scripts.validate_blackwell_smoke_artifact --artifact-json ... --expect-backend fa4 --require-blackwell`) and include CUDA device metadata in smoke JSON for auditable evidence checks.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
     - [x] Add single-command artifact bundle output (`--output-dir`) in `scripts.flash_backend_smoke` so on-device validation can emit canonical JSON + status-line evidence in one run.
+    - [x] Add status-line/JSON consistency validation support in `scripts.validate_blackwell_smoke_artifact` (`--status-line-file`) so on-device evidence checks fail fast when bundle artifacts drift.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
@@ -163,6 +164,7 @@ Examples:
   - [x] Add reusable smoke script + unit tests for backend-status parsing and Blackwell environment gating.
   - [x] Add status-line artifact output coverage so Blackwell smoke evidence can be persisted as a canonical one-line log file.
   - [x] Add artifact-validation tests for recorded smoke JSON (backend expectation + Blackwell capability checks).
+  - [x] Add artifact-validation coverage for status-line/JSON bundle consistency checks.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests
