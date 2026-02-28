@@ -1016,3 +1016,33 @@ def test_main_rejects_discovery_receipt_when_bundle_dir_not_auto(tmp_path, monke
 
     with pytest.raises(RuntimeError, match="requires --bundle-dir=auto"):
         checker.main()
+
+
+def test_main_writes_blocked_markdown_on_auto_discovery_failure(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_valid_bundle(sample_bundle)
+    blocked_md = bundle_root / "blackwell_bundle_blocked.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real Blackwell bundle found"):
+        checker.main()
+
+    text = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Bundle Checker Blocked" in text
+    assert "- bundle_dir_arg: `auto`" in text
+    assert f"- bundle_root_arg: `{bundle_root}`" in text
+    assert "- resolved_bundle_dir: ``" in text
+    assert "no real Blackwell bundle found" in text

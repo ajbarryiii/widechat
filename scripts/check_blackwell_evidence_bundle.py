@@ -9,6 +9,7 @@ import hashlib
 import json
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from scripts.validate_blackwell_smoke_artifact import (
@@ -95,6 +96,11 @@ def _parse_args() -> argparse.Namespace:
             "optional path for machine-readable auto-discovery diagnostics "
             "(--bundle-dir=auto only)"
         ),
+    )
+    parser.add_argument(
+        "--output-blocked-md",
+        default="",
+        help="optional path to write markdown blocker evidence when validation fails",
     )
     return parser.parse_args()
 
@@ -445,6 +451,56 @@ def _write_check_report(
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _write_blocked_markdown(
+    *,
+    output_path: Path,
+    command: list[str],
+    reason: str,
+    bundle_dir_arg: str,
+    bundle_root_arg: str,
+    expect_backend: str,
+    check_in: bool,
+    require_blackwell: bool,
+    require_git_tracked: bool,
+    require_real_bundle: bool,
+    require_device_substring: str,
+    preflight: bool,
+    dry_run: bool,
+    output_check_json: str,
+    output_preflight_json: str,
+    output_discovery_json: str,
+    resolved_bundle_dir: Path | None,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Blackwell Bundle Checker Blocked",
+        "",
+        "## Context",
+        f"- command: `{json.dumps(command)}`",
+        f"- bundle_dir_arg: `{bundle_dir_arg}`",
+        f"- bundle_root_arg: `{bundle_root_arg}`",
+        f"- expect_backend: `{expect_backend}`",
+        f"- check_in: `{str(check_in).lower()}`",
+        f"- require_blackwell: `{str(require_blackwell).lower()}`",
+        f"- require_git_tracked: `{str(require_git_tracked).lower()}`",
+        f"- require_real_bundle: `{str(require_real_bundle).lower()}`",
+        f"- require_device_substring: `{require_device_substring}`",
+        f"- preflight: `{str(preflight).lower()}`",
+        f"- dry_run: `{str(dry_run).lower()}`",
+        f"- output_check_json: `{output_check_json}`",
+        f"- output_preflight_json: `{output_preflight_json}`",
+        f"- output_discovery_json: `{output_discovery_json}`",
+        f"- resolved_bundle_dir: `{resolved_bundle_dir if resolved_bundle_dir is not None else ''}`",
+        "",
+        "## Blocker",
+        "```text",
+        reason,
+        "```",
+        "",
+    ]
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def run_bundle_check(
     *,
     bundle_dir: Path,
@@ -513,101 +569,125 @@ def run_bundle_check(
 
 def main() -> None:
     args = _parse_args()
-    if args.preflight and args.dry_run:
-        raise RuntimeError("--preflight and --dry-run are mutually exclusive")
-    if args.output_preflight_json and not args.preflight:
-        raise RuntimeError("--output-preflight-json requires --preflight")
-    if args.output_discovery_json and args.bundle_dir != "auto":
-        raise RuntimeError("--output-discovery-json requires --bundle-dir=auto")
-    if args.bundle_dir == "auto":
-        bundle_root = Path(args.bundle_root)
-        try:
-            bundle_dir, rejected_dirs = _resolve_bundle_dir_with_diagnostics(args.bundle_dir, args.bundle_root)
-        except RuntimeError as exc:
+    bundle_dir: Path | None = None
+    try:
+        if args.preflight and args.dry_run:
+            raise RuntimeError("--preflight and --dry-run are mutually exclusive")
+        if args.output_preflight_json and not args.preflight:
+            raise RuntimeError("--output-preflight-json requires --preflight")
+        if args.output_discovery_json and args.bundle_dir != "auto":
+            raise RuntimeError("--output-discovery-json requires --bundle-dir=auto")
+        if args.bundle_dir == "auto":
+            bundle_root = Path(args.bundle_root)
+            try:
+                bundle_dir, rejected_dirs = _resolve_bundle_dir_with_diagnostics(args.bundle_dir, args.bundle_root)
+            except RuntimeError as exc:
+                if args.output_discovery_json:
+                    _write_discovery_report(
+                        args.output_discovery_json,
+                        bundle_root=bundle_root,
+                        ok=False,
+                        resolved_bundle_dir=None,
+                        rejected_dirs=_discover_bundle_candidates(bundle_root)[1] if bundle_root.is_dir() else [],
+                        error=str(exc),
+                    )
+                raise
             if args.output_discovery_json:
                 _write_discovery_report(
                     args.output_discovery_json,
                     bundle_root=bundle_root,
-                    ok=False,
-                    resolved_bundle_dir=None,
-                    rejected_dirs=_discover_bundle_candidates(bundle_root)[1] if bundle_root.is_dir() else [],
-                    error=str(exc),
+                    ok=True,
+                    resolved_bundle_dir=bundle_dir,
+                    rejected_dirs=rejected_dirs,
+                    error="",
                 )
-            raise
-        if args.output_discovery_json:
-            _write_discovery_report(
-                args.output_discovery_json,
-                bundle_root=bundle_root,
-                ok=True,
-                resolved_bundle_dir=bundle_dir,
-                rejected_dirs=rejected_dirs,
-                error="",
-            )
-    else:
-        bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
-    effective_require_blackwell = args.require_blackwell or args.check_in
-    effective_require_git_tracked = args.require_git_tracked or args.check_in
-    effective_require_device_substring = args.require_device_substring or ("RTX 5090" if args.check_in else "")
+        else:
+            bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
+        effective_require_blackwell = args.require_blackwell or args.check_in
+        effective_require_git_tracked = args.require_git_tracked or args.check_in
+        effective_require_device_substring = args.require_device_substring or ("RTX 5090" if args.check_in else "")
 
-    if args.preflight:
-        try:
-            run_bundle_preflight(
-                bundle_dir=bundle_dir,
-                require_real_bundle=args.require_real_bundle,
-            )
-        except RuntimeError as exc:
+        if args.preflight:
+            try:
+                run_bundle_preflight(
+                    bundle_dir=bundle_dir,
+                    require_real_bundle=args.require_real_bundle,
+                )
+            except RuntimeError as exc:
+                if args.output_preflight_json:
+                    _write_preflight_report(
+                        args.output_preflight_json,
+                        bundle_dir=bundle_dir,
+                        require_real_bundle=args.require_real_bundle,
+                        ok=False,
+                        missing_files=_missing_required_files(bundle_dir),
+                        error=str(exc),
+                    )
+                raise
             if args.output_preflight_json:
                 _write_preflight_report(
                     args.output_preflight_json,
                     bundle_dir=bundle_dir,
                     require_real_bundle=args.require_real_bundle,
-                    ok=False,
-                    missing_files=_missing_required_files(bundle_dir),
-                    error=str(exc),
+                    ok=True,
+                    missing_files=[],
+                    error="",
                 )
-            raise
-        if args.output_preflight_json:
-            _write_preflight_report(
-                args.output_preflight_json,
-                bundle_dir=bundle_dir,
-                require_real_bundle=args.require_real_bundle,
-                ok=True,
-                missing_files=[],
-                error="",
+            print(
+                "bundle_preflight_ok "
+                f"bundle_dir={bundle_dir} "
+                f"require_real_bundle={args.require_real_bundle}"
             )
-        print(
-            "bundle_preflight_ok "
-            f"bundle_dir={bundle_dir} "
-            f"require_real_bundle={args.require_real_bundle}"
+            return
+
+        if args.dry_run:
+            print(
+                "bundle_check_dry_run_ok "
+                f"bundle_dir={bundle_dir} "
+                f"expect_backend={args.expect_backend} "
+                f"check_in={args.check_in} "
+                f"require_blackwell={effective_require_blackwell} "
+                f"require_git_tracked={effective_require_git_tracked} "
+                f"require_real_bundle={args.require_real_bundle} "
+                f"require_device_substring={effective_require_device_substring or '<none>'} "
+                f"output_check_json={args.output_check_json or '<none>'}"
+            )
+            return
+
+        selected_backend = run_bundle_check(
+            bundle_dir=bundle_dir,
+            expect_backend=args.expect_backend,
+            check_in=args.check_in,
+            require_blackwell=args.require_blackwell,
+            require_git_tracked=args.require_git_tracked,
+            require_real_bundle=args.require_real_bundle,
+            require_device_substring=effective_require_device_substring,
+            output_check_json=args.output_check_json,
         )
-        return
 
-    if args.dry_run:
-        print(
-            "bundle_check_dry_run_ok "
-            f"bundle_dir={bundle_dir} "
-            f"expect_backend={args.expect_backend} "
-            f"check_in={args.check_in} "
-            f"require_blackwell={effective_require_blackwell} "
-            f"require_git_tracked={effective_require_git_tracked} "
-            f"require_real_bundle={args.require_real_bundle} "
-            f"require_device_substring={effective_require_device_substring or '<none>'} "
-            f"output_check_json={args.output_check_json or '<none>'}"
-        )
-        return
-
-    selected_backend = run_bundle_check(
-        bundle_dir=bundle_dir,
-        expect_backend=args.expect_backend,
-        check_in=args.check_in,
-        require_blackwell=args.require_blackwell,
-        require_git_tracked=args.require_git_tracked,
-        require_real_bundle=args.require_real_bundle,
-        require_device_substring=effective_require_device_substring,
-        output_check_json=args.output_check_json,
-    )
-
-    print(f"bundle_check_ok selected={selected_backend} bundle_dir={bundle_dir}")
+        print(f"bundle_check_ok selected={selected_backend} bundle_dir={bundle_dir}")
+    except RuntimeError:
+        if args.output_blocked_md:
+            _write_blocked_markdown(
+                output_path=Path(args.output_blocked_md),
+                command=[*sys.argv],
+                reason=str(sys.exc_info()[1]),
+                bundle_dir_arg=args.bundle_dir,
+                bundle_root_arg=args.bundle_root,
+                expect_backend=args.expect_backend,
+                check_in=args.check_in,
+                require_blackwell=args.require_blackwell,
+                require_git_tracked=args.require_git_tracked,
+                require_real_bundle=args.require_real_bundle,
+                require_device_substring=args.require_device_substring,
+                preflight=args.preflight,
+                dry_run=args.dry_run,
+                output_check_json=args.output_check_json,
+                output_preflight_json=args.output_preflight_json,
+                output_discovery_json=args.output_discovery_json,
+                resolved_bundle_dir=bundle_dir,
+            )
+        raise
 
 
 if __name__ == "__main__":
