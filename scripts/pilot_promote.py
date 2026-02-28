@@ -13,6 +13,7 @@ from nanochat.pilot_sweep import format_finalists_summary, select_finalists
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Select Stage 2 finalists from pilot ranking JSON")
     parser.add_argument("--input-json", type=str, required=True, help="pilot sweep JSON produced by scripts.pilot_sweep --output-json")
+    parser.add_argument("--min-finalists", type=int, default=2, help="minimum number of qualified finalists required")
     parser.add_argument("--max-finalists", type=int, default=3, help="max number of qualified finalists to keep")
     parser.add_argument("--output-json", type=str, default="", help="optional path to write selected finalists JSON")
     parser.add_argument("--output-md", type=str, default="", help="optional path to write selected finalists markdown")
@@ -140,11 +141,40 @@ def _require_optional_positive_int_field(
     return value
 
 
+def _validate_stage2_finalists(
+    finalists: list[dict[str, int | float | bool | str | None]],
+    *,
+    min_finalists: int,
+    max_finalists: int,
+) -> None:
+    if min_finalists <= 0:
+        raise ValueError("--min-finalists must be >= 1")
+    if max_finalists <= 0:
+        raise ValueError("--max-finalists must be >= 1")
+    if min_finalists > max_finalists:
+        raise ValueError("--min-finalists must be <= --max-finalists")
+
+    finalist_count = len(finalists)
+    if finalist_count < min_finalists:
+        raise RuntimeError(
+            f"expected at least {min_finalists} qualified finalists, found {finalist_count}"
+        )
+    if finalist_count > max_finalists:
+        raise RuntimeError(
+            f"expected at most {max_finalists} qualified finalists, found {finalist_count}"
+        )
+
+
 def main() -> None:
     args = _parse_args()
     ranked_runs = _load_ranked_runs(args.input_json)
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
+    _validate_stage2_finalists(
+        finalists,
+        min_finalists=args.min_finalists,
+        max_finalists=args.max_finalists,
+    )
     finalists_summary = format_finalists_summary(ranked_runs, max_finalists=args.max_finalists)
 
     print(finalists_summary)

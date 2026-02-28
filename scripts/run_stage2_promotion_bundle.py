@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from nanochat.pilot_sweep import format_finalists_summary, select_finalists
-from scripts.pilot_promote import _load_ranked_runs
+from scripts.pilot_promote import _load_ranked_runs, _validate_stage2_finalists
 
 
 def _parse_args() -> argparse.Namespace:
@@ -24,6 +24,7 @@ def _parse_args() -> argparse.Namespace:
         default="artifacts/pilot",
         help="artifact directory for stage2 finalists JSON/markdown",
     )
+    parser.add_argument("--min-finalists", type=int, default=2, help="minimum number of qualified finalists required")
     parser.add_argument("--max-finalists", type=int, default=3, help="max number of qualified finalists to keep")
     parser.add_argument(
         "--output-json",
@@ -45,7 +46,12 @@ def _resolve_output_paths(output_dir: str, output_json: str, output_md: str) -> 
     return finalists_json, finalists_md
 
 
-def _write_finalists_json(path: Path, source: str, max_finalists: int, finalists: list[dict[str, object]]) -> None:
+def _write_finalists_json(
+    path: Path,
+    source: str,
+    max_finalists: int,
+    finalists: list[dict[str, int | float | bool | str | None]],
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "source": source,
@@ -55,7 +61,11 @@ def _write_finalists_json(path: Path, source: str, max_finalists: int, finalists
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _write_finalists_md(path: Path, finalists_summary: str, finalists: list[dict[str, object]]) -> None:
+def _write_finalists_md(
+    path: Path,
+    finalists_summary: str,
+    finalists: list[dict[str, int | float | bool | str | None]],
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "## Stage 2 Finalists",
@@ -79,8 +89,11 @@ def main() -> None:
     ranked_runs = _load_ranked_runs(args.input_json)
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
-    if not finalists:
-        raise RuntimeError("no qualified finalists were found; cannot emit Stage 2 promotion bundle")
+    _validate_stage2_finalists(
+        finalists,
+        min_finalists=args.min_finalists,
+        max_finalists=args.max_finalists,
+    )
 
     finalists_summary = format_finalists_summary(ranked_runs, max_finalists=args.max_finalists)
     print(finalists_summary)

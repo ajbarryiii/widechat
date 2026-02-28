@@ -60,6 +60,8 @@ def test_main_writes_stage2_finalists_bundle(tmp_path, monkeypatch, capsys):
             str(output_dir),
             "--max-finalists",
             "1",
+            "--min-finalists",
+            "1",
         ],
     )
 
@@ -112,5 +114,44 @@ def test_main_rejects_when_no_qualified_finalists(tmp_path, monkeypatch):
         ],
     )
 
-    with pytest.raises(RuntimeError, match="no qualified finalists"):
+    with pytest.raises(RuntimeError, match="expected at least 2 qualified finalists"):
+        bundle.main()
+
+
+def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):
+    input_json = tmp_path / "ranked_runs.json"
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            }
+        ]
+    }
+    input_json.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--min-finalists",
+            "3",
+            "--max-finalists",
+            "2",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--min-finalists must be <= --max-finalists"):
         bundle.main()

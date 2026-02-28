@@ -187,6 +187,8 @@ def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
             str(input_path),
             "--max-finalists",
             "1",
+            "--min-finalists",
+            "1",
             "--output-json",
             str(output_json),
             "--output-md",
@@ -242,3 +244,81 @@ def test_sample_artifacts_stay_in_sync_with_pilot_promote(tmp_path, monkeypatch)
         expected_finalists_json.read_text(encoding="utf-8")
     )
     assert generated_md.read_text(encoding="utf-8") == expected_finalists_md.read_text(encoding="utf-8")
+
+
+def test_main_rejects_when_not_enough_finalists(tmp_path, monkeypatch):
+    input_path = tmp_path / "pilot.json"
+    ranked_runs = [
+        {
+            "rank": 1,
+            "config": "12x1",
+            "depth": 12,
+            "n_branches": 1,
+            "aspect_ratio": 64,
+            "selected_tok_per_sec": 1000,
+            "min_val_bpb": 4.1,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+        {
+            "rank": None,
+            "config": "2x5",
+            "depth": 2,
+            "n_branches": 5,
+            "aspect_ratio": 384,
+            "selected_tok_per_sec": 900,
+            "min_val_bpb": 4.2,
+            "token_budget": 250000000,
+            "qualified": False,
+            "disqualify_reason": "slow>5.0%",
+        },
+    ]
+    input_path.write_text(json.dumps({"ranked_runs": ranked_runs}), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_promote.py",
+            "--input-json",
+            str(input_path),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="expected at least 2 qualified finalists"):
+        pilot_promote.main()
+
+
+def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):
+    input_path = tmp_path / "pilot.json"
+    ranked_runs = [
+        {
+            "rank": 1,
+            "config": "12x1",
+            "depth": 12,
+            "n_branches": 1,
+            "aspect_ratio": 64,
+            "selected_tok_per_sec": 1000,
+            "min_val_bpb": 4.1,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        }
+    ]
+    input_path.write_text(json.dumps({"ranked_runs": ranked_runs}), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_promote.py",
+            "--input-json",
+            str(input_path),
+            "--min-finalists",
+            "3",
+            "--max-finalists",
+            "2",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--min-finalists must be <= --max-finalists"):
+        pilot_promote.main()
