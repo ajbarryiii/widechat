@@ -924,3 +924,95 @@ def test_main_rejects_preflight_receipt_without_preflight(tmp_path, monkeypatch)
 
     with pytest.raises(RuntimeError, match="requires --preflight"):
         checker.main()
+
+
+def test_main_auto_writes_discovery_receipt_on_success(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    latest_bundle = bundle_root / "run_latest"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_valid_bundle(latest_bundle)
+    _write_valid_bundle(sample_bundle)
+    os.utime(latest_bundle / "flash_backend_smoke.json", (200, 200))
+    os.utime(sample_bundle / "flash_backend_smoke.json", (300, 300))
+    discovery_receipt = bundle_root / "auto_discovery.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--dry-run",
+            "--output-discovery-json",
+            str(discovery_receipt),
+        ],
+    )
+
+    checker.main()
+    payload = json.loads(discovery_receipt.read_text(encoding="utf-8"))
+    assert payload["bundle_root"] == str(bundle_root)
+    assert payload["ok"] is True
+    assert payload["resolved_bundle_dir"] == str(latest_bundle)
+    assert payload["error"] == ""
+    assert payload["rejected_candidates"] == [
+        {
+            "path": str(sample_bundle),
+            "reason": "sample path segment",
+        }
+    ]
+
+
+def test_main_auto_writes_discovery_receipt_on_failure(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    sample_bundle = bundle_root / "sample_bundle"
+    _write_valid_bundle(sample_bundle)
+    discovery_receipt = bundle_root / "auto_discovery_failed.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--output-discovery-json",
+            str(discovery_receipt),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real Blackwell bundle found"):
+        checker.main()
+
+    payload = json.loads(discovery_receipt.read_text(encoding="utf-8"))
+    assert payload["bundle_root"] == str(bundle_root)
+    assert payload["ok"] is False
+    assert payload["resolved_bundle_dir"] == ""
+    assert payload["error"].startswith("no real Blackwell bundle found")
+    assert payload["rejected_candidates"] == [
+        {
+            "path": str(sample_bundle),
+            "reason": "sample path segment",
+        }
+    ]
+
+
+def test_main_rejects_discovery_receipt_when_bundle_dir_not_auto(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--output-discovery-json",
+            str(bundle_dir / "auto_discovery.json"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="requires --bundle-dir=auto"):
+        checker.main()

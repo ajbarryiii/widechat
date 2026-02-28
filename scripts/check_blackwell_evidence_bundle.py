@@ -88,6 +88,14 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path for machine-readable preflight receipt (preflight mode only)",
     )
+    parser.add_argument(
+        "--output-discovery-json",
+        default="",
+        help=(
+            "optional path for machine-readable auto-discovery diagnostics "
+            "(--bundle-dir=auto only)"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -137,16 +145,7 @@ def _render_no_real_bundle_error(
     return "\n".join(lines)
 
 
-def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
-    if bundle_dir_arg != "auto":
-        return Path(bundle_dir_arg)
-
-    bundle_root = Path(bundle_root_arg)
-    if not bundle_root.is_dir():
-        raise RuntimeError(
-            f"bundle_root does not exist: {bundle_root}; pass --bundle-dir explicitly or emit a bundle first"
-        )
-
+def _discover_bundle_candidates(bundle_root: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
     discovered_dirs: set[Path] = set()
     for required_file in _REQUIRED_BUNDLE_FILES:
         discovered_dirs.update(path.parent for path in bundle_root.rglob(required_file) if path.is_file())
@@ -160,6 +159,21 @@ def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
         else:
             rejected_dirs.append((discovered_dir, classification))
 
+    candidates.sort(key=lambda path: (path / "flash_backend_smoke.json").stat().st_mtime, reverse=True)
+    return candidates, rejected_dirs
+
+
+def _resolve_bundle_dir_with_diagnostics(bundle_dir_arg: str, bundle_root_arg: str) -> tuple[Path, list[tuple[Path, str]]]:
+    if bundle_dir_arg != "auto":
+        return Path(bundle_dir_arg), []
+
+    bundle_root = Path(bundle_root_arg)
+    if not bundle_root.is_dir():
+        raise RuntimeError(
+            f"bundle_root does not exist: {bundle_root}; pass --bundle-dir explicitly or emit a bundle first"
+        )
+
+    candidates, rejected_dirs = _discover_bundle_candidates(bundle_root)
     if not candidates:
         raise RuntimeError(
             _render_no_real_bundle_error(
@@ -168,8 +182,36 @@ def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
             )
         )
 
-    candidates.sort(key=lambda path: (path / "flash_backend_smoke.json").stat().st_mtime, reverse=True)
-    return candidates[0]
+    return candidates[0], rejected_dirs
+
+
+def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
+    resolved_bundle_dir, _rejected_dirs = _resolve_bundle_dir_with_diagnostics(bundle_dir_arg, bundle_root_arg)
+    return resolved_bundle_dir
+
+
+def _write_discovery_report(
+    path: str,
+    *,
+    bundle_root: Path,
+    ok: bool,
+    resolved_bundle_dir: Path | None,
+    rejected_dirs: list[tuple[Path, str]],
+    error: str,
+) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "bundle_root": str(bundle_root),
+        "ok": ok,
+        "resolved_bundle_dir": str(resolved_bundle_dir) if resolved_bundle_dir is not None else "",
+        "rejected_candidates": [
+            {"path": str(rejected_path), "reason": reason}
+            for rejected_path, reason in rejected_dirs
+        ],
+        "error": error,
+    }
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _assert_files_exist(paths: dict[str, Path]) -> None:
@@ -475,8 +517,34 @@ def main() -> None:
         raise RuntimeError("--preflight and --dry-run are mutually exclusive")
     if args.output_preflight_json and not args.preflight:
         raise RuntimeError("--output-preflight-json requires --preflight")
-
-    bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
+    if args.output_discovery_json and args.bundle_dir != "auto":
+        raise RuntimeError("--output-discovery-json requires --bundle-dir=auto")
+    if args.bundle_dir == "auto":
+        bundle_root = Path(args.bundle_root)
+        try:
+            bundle_dir, rejected_dirs = _resolve_bundle_dir_with_diagnostics(args.bundle_dir, args.bundle_root)
+        except RuntimeError as exc:
+            if args.output_discovery_json:
+                _write_discovery_report(
+                    args.output_discovery_json,
+                    bundle_root=bundle_root,
+                    ok=False,
+                    resolved_bundle_dir=None,
+                    rejected_dirs=_discover_bundle_candidates(bundle_root)[1] if bundle_root.is_dir() else [],
+                    error=str(exc),
+                )
+            raise
+        if args.output_discovery_json:
+            _write_discovery_report(
+                args.output_discovery_json,
+                bundle_root=bundle_root,
+                ok=True,
+                resolved_bundle_dir=bundle_dir,
+                rejected_dirs=rejected_dirs,
+                error="",
+            )
+    else:
+        bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     effective_require_blackwell = args.require_blackwell or args.check_in
     effective_require_git_tracked = args.require_git_tracked or args.check_in
     effective_require_device_substring = args.require_device_substring or ("RTX 5090" if args.check_in else "")
