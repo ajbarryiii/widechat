@@ -747,6 +747,35 @@ def test_main_preflight_accepts_complete_bundle(tmp_path, monkeypatch, capsys):
     assert f"bundle_dir={bundle_dir}" in stdout
 
 
+def test_main_preflight_writes_machine_readable_receipt(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    receipt_path = bundle_dir / "preflight_receipt.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--require-real-bundle",
+            "--output-preflight-json",
+            str(receipt_path),
+        ],
+    )
+
+    checker.main()
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert payload == {
+        "bundle_dir": str(bundle_dir),
+        "require_real_bundle": True,
+        "ok": True,
+        "missing_files": [],
+        "error": "",
+    }
+
+
 def test_main_preflight_rejects_missing_files_with_actionable_error(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
     bundle_dir.mkdir(parents=True, exist_ok=True)
@@ -773,6 +802,39 @@ def test_main_preflight_rejects_missing_files_with_actionable_error(tmp_path, mo
     assert "scripts.run_blackwell_smoke_bundle --output-dir" in message
 
 
+def test_main_preflight_failure_writes_machine_readable_receipt(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    (bundle_dir / "blackwell_smoke_runbook.md").write_text("# runbook\n", encoding="utf-8")
+    receipt_path = bundle_dir / "preflight_failure_receipt.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--output-preflight-json",
+            str(receipt_path),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="bundle preflight failed"):
+        checker.main()
+
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert payload["bundle_dir"] == str(bundle_dir)
+    assert payload["require_real_bundle"] is False
+    assert payload["ok"] is False
+    assert payload["error"].startswith("bundle preflight failed")
+    assert payload["missing_files"] == [
+        "flash_backend_smoke.json",
+        "flash_backend_status.log",
+        "blackwell_smoke_evidence.md",
+    ]
+
+
 def test_main_preflight_mutually_exclusive_with_dry_run(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
 
@@ -788,4 +850,23 @@ def test_main_preflight_mutually_exclusive_with_dry_run(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="mutually exclusive"):
+        checker.main()
+
+
+def test_main_rejects_preflight_receipt_without_preflight(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--output-preflight-json",
+            str(bundle_dir / "preflight_receipt.json"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="requires --preflight"):
         checker.main()

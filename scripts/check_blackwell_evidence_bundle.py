@@ -83,6 +83,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="validate required bundle files are present before strict check-in validation",
     )
+    parser.add_argument(
+        "--output-preflight-json",
+        default="",
+        help="optional path for machine-readable preflight receipt (preflight mode only)",
+    )
     return parser.parse_args()
 
 
@@ -173,9 +178,13 @@ def _assert_files_exist(paths: dict[str, Path]) -> None:
             raise RuntimeError(f"missing {label} file: {path}")
 
 
+def _missing_required_files(bundle_dir: Path) -> list[str]:
+    return [path.name for path in _required_paths(bundle_dir).values() if not path.is_file()]
+
+
 def run_bundle_preflight(*, bundle_dir: Path, require_real_bundle: bool) -> None:
     paths = _required_paths(bundle_dir)
-    missing_files = [path.name for path in paths.values() if not path.is_file()]
+    missing_files = _missing_required_files(bundle_dir)
     if missing_files:
         missing_list = ", ".join(missing_files)
         raise RuntimeError(
@@ -188,6 +197,27 @@ def run_bundle_preflight(*, bundle_dir: Path, require_real_bundle: bool) -> None
         _assert_real_bundle_dir(bundle_dir)
         payload = _load_artifact(str(paths["artifact_json"]))
         _assert_real_bundle_payload(payload, paths["artifact_json"])
+
+
+def _write_preflight_report(
+    path: str,
+    *,
+    bundle_dir: Path,
+    require_real_bundle: bool,
+    ok: bool,
+    missing_files: list[str],
+    error: str,
+) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "bundle_dir": str(bundle_dir),
+        "require_real_bundle": require_real_bundle,
+        "ok": ok,
+        "missing_files": missing_files,
+        "error": error,
+    }
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _assert_git_tracked(paths: dict[str, Path], bundle_dir: Path) -> None:
@@ -419,6 +449,8 @@ def main() -> None:
     args = _parse_args()
     if args.preflight and args.dry_run:
         raise RuntimeError("--preflight and --dry-run are mutually exclusive")
+    if args.output_preflight_json and not args.preflight:
+        raise RuntimeError("--output-preflight-json requires --preflight")
 
     bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     effective_require_blackwell = args.require_blackwell or args.check_in
@@ -426,10 +458,31 @@ def main() -> None:
     effective_require_device_substring = args.require_device_substring or ("RTX 5090" if args.check_in else "")
 
     if args.preflight:
-        run_bundle_preflight(
-            bundle_dir=bundle_dir,
-            require_real_bundle=args.require_real_bundle,
-        )
+        try:
+            run_bundle_preflight(
+                bundle_dir=bundle_dir,
+                require_real_bundle=args.require_real_bundle,
+            )
+        except RuntimeError as exc:
+            if args.output_preflight_json:
+                _write_preflight_report(
+                    args.output_preflight_json,
+                    bundle_dir=bundle_dir,
+                    require_real_bundle=args.require_real_bundle,
+                    ok=False,
+                    missing_files=_missing_required_files(bundle_dir),
+                    error=str(exc),
+                )
+            raise
+        if args.output_preflight_json:
+            _write_preflight_report(
+                args.output_preflight_json,
+                bundle_dir=bundle_dir,
+                require_real_bundle=args.require_real_bundle,
+                ok=True,
+                missing_files=[],
+                error="",
+            )
         print(
             "bundle_preflight_ok "
             f"bundle_dir={bundle_dir} "
