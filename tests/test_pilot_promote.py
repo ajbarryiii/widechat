@@ -87,6 +87,7 @@ def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
     assert "Selected finalists:" in stdout
     assert "Stage 2 depth/branch flags:" in stdout
     assert "--depth 12 --n-branches 1 --aspect-ratio 64" in stdout
+    assert "--depth 6 --n-branches 2 --aspect-ratio 128" not in stdout
 
     payload = json.loads(output_json.read_text(encoding="utf-8"))
     assert payload["max_finalists"] == 1
@@ -95,3 +96,4 @@ def test_main_writes_selected_finalists_outputs(tmp_path, monkeypatch, capsys):
     md = output_md.read_text(encoding="utf-8")
     assert "## Stage 2 Finalists" in md
     assert "`--depth 12 --n-branches 1 --aspect-ratio 64`" in md
+    assert "`--depth 6 --n-branches 2 --aspect-ratio 128`" not in md

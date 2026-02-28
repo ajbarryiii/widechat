@@ -36,7 +36,7 @@ def main() -> None:
     ranked_runs = _load_ranked_runs(args.input_json)
 
     finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
-    finalists_summary = format_finalists_summary(ranked_runs)
+    finalists_summary = format_finalists_summary(ranked_runs, max_finalists=args.max_finalists)
 
     print(finalists_summary)
     print()

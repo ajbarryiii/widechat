@@ -268,8 +268,11 @@ def select_finalists(
     return qualified[:max_finalists]
 
 
-def format_finalists_summary(rows: list[dict[str, int | float | bool | str | None]]) -> str:
-    finalists = select_finalists(rows)
+def format_finalists_summary(
+    rows: list[dict[str, int | float | bool | str | None]],
+    max_finalists: int = 3,
+) -> str:
+    finalists = select_finalists(rows, max_finalists=max_finalists)
     if not finalists:
         return "No qualified finalists were selected."
     baseline_row = next(row for row in rows if row["config"] == "12x1")

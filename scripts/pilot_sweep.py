@@ -13,10 +13,11 @@ import sys
 from nanochat.pilot_sweep import (
     DEFAULT_PILOT_TARGETS,
     apply_ranking_rule,
-    format_finalists_summary,
     build_pilot_command,
+    format_finalists_summary,
     format_ranking_table,
     run_single_pilot,
+    select_finalists,
 )
 
 
@@ -34,6 +35,24 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--python-exe", type=str, default=sys.executable)
     parser.add_argument("--output-json", type=str, default="", help="optional path to write machine-readable results")
     parser.add_argument("--output-md", type=str, default="", help="optional path to write markdown ranking table + finalists")
+    parser.add_argument(
+        "--max-finalists",
+        type=int,
+        default=3,
+        help="max number of qualified finalists to record in artifacts",
+    )
+    parser.add_argument(
+        "--output-finalists-json",
+        type=str,
+        default="",
+        help="optional path to write selected finalists JSON",
+    )
+    parser.add_argument(
+        "--output-finalists-md",
+        type=str,
+        default="",
+        help="optional path to write selected finalists markdown",
+    )
     parser.add_argument(
         "--artifacts-dir",
         type=str,
@@ -178,8 +197,9 @@ def main() -> None:
         slowdown_threshold_pct=args.slowdown_threshold_pct,
         clear_bpb_gain=args.clear_bpb_gain,
     )
+    finalists = select_finalists(ranked, max_finalists=args.max_finalists)
     ranking_table = format_ranking_table(ranked)
-    finalists_summary = format_finalists_summary(ranked)
+    finalists_summary = format_finalists_summary(ranked, max_finalists=args.max_finalists)
     print(ranking_table)
     print()
     print(finalists_summary)
@@ -211,6 +231,31 @@ def main() -> None:
             "",
         ]
         with open(args.output_md, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    if args.output_finalists_json:
+        payload = {
+            "max_finalists": args.max_finalists,
+            "selected_finalists": finalists,
+        }
+        with open(args.output_finalists_json, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+    if args.output_finalists_md:
+        lines = [
+            "## Stage 2 Finalists",
+            "",
+            finalists_summary,
+            "",
+            "## Stage 2 depth/branch flags",
+            "",
+        ]
+        for row in finalists:
+            lines.append(
+                f"- `{row['config']}`: `--depth {row['depth']} --n-branches {row['n_branches']} --aspect-ratio {row['aspect_ratio']}`"
+            )
+        lines.append("")
+        with open(args.output_finalists_md, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
 

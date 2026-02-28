@@ -443,3 +443,78 @@ def test_main_resume_from_artifacts_requires_artifacts_dir(monkeypatch):
 
     with pytest.raises(ValueError, match="requires --artifacts-dir"):
         pilot_sweep_script.main()
+
+
+def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch):
+    total_batch_size = 1000
+    num_iterations = 100
+    token_budget = total_batch_size * num_iterations
+
+    for index, target in enumerate(pilot_sweep.DEFAULT_PILOT_TARGETS, start=1):
+        selected_tok_per_sec = 1000 - index
+        min_val_bpb = 4.20 + index * 0.01
+        unstable = False
+        if target.label == "12x1":
+            selected_tok_per_sec = 1000
+            min_val_bpb = 4.20
+        elif target.label == "6x2":
+            selected_tok_per_sec = 990
+            min_val_bpb = 4.05
+        elif target.label == "4x3":
+            selected_tok_per_sec = 992
+            min_val_bpb = 4.00
+        elif target.label == "2x5":
+            selected_tok_per_sec = 900
+            min_val_bpb = 4.30
+
+        _write_run_artifacts(
+            artifacts_dir=str(tmp_path),
+            run_index=index,
+            run_result={
+                "config": target.label,
+                "selected_tok_per_sec": selected_tok_per_sec,
+                "min_val_bpb": min_val_bpb,
+                "unstable": unstable,
+                "token_budget": token_budget,
+            },
+            output_text=f"{target.label} output",
+        )
+
+    finalists_json = tmp_path / "finalists.json"
+    finalists_md = tmp_path / "finalists.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            str(total_batch_size),
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            str(token_budget),
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--resume-from-artifacts",
+            "--max-finalists",
+            "2",
+            "--output-finalists-json",
+            str(finalists_json),
+            "--output-finalists-md",
+            str(finalists_md),
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+    finalists_payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    assert finalists_payload["max_finalists"] == 2
+    assert [row["config"] for row in finalists_payload["selected_finalists"]] == ["4x3", "6x2"]
+
+    finalists_md_text = finalists_md.read_text(encoding="utf-8")
+    assert "## Stage 2 Finalists" in finalists_md_text
+    assert "`4x3`: `--depth 4 --n-branches 3 --aspect-ratio 192`" in finalists_md_text
+    assert "`6x2`: `--depth 6 --n-branches 2 --aspect-ratio 128`" in finalists_md_text
+    assert "`12x1`: `--depth 12 --n-branches 1 --aspect-ratio 64`" not in finalists_md_text
