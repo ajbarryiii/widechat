@@ -144,6 +144,8 @@ Examples:
     - [x] Add single-command artifact bundle output (`--output-dir`) in `scripts.flash_backend_smoke` so on-device validation can emit canonical JSON + status-line evidence in one run.
     - [x] Add status-line/JSON consistency validation support in `scripts.validate_blackwell_smoke_artifact` (`--status-line-file`) so on-device evidence checks fail fast when bundle artifacts drift.
     - [x] Add check-in-ready evidence markdown output in `scripts.validate_blackwell_smoke_artifact` (`--output-evidence-md`) so one-device runs can record canonical `selected=...` plus device metadata in a reviewable artifact.
+    - [x] Add single-command Blackwell bundle runner (`python -m scripts.run_blackwell_smoke_bundle --output-dir ...`) that executes smoke capture + artifact validation + evidence markdown emission in one step.
+    - [ ] Execute the bundle runner on target RTX 5090 and check in emitted evidence artifacts.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
@@ -166,6 +168,7 @@ Examples:
   - [x] Add status-line artifact output coverage so Blackwell smoke evidence can be persisted as a canonical one-line log file.
   - [x] Add artifact-validation tests for recorded smoke JSON (backend expectation + Blackwell capability checks).
   - [x] Add artifact-validation coverage for status-line/JSON bundle consistency checks.
+  - [x] Add one-command smoke-bundle test coverage (`scripts.run_blackwell_smoke_bundle`) so RTX 5090 validation workflow remains reproducible and regression-tested.
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests
