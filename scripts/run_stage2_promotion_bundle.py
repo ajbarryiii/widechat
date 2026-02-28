@@ -83,6 +83,44 @@ def _resolve_output_paths(output_dir: str, output_json: str, output_md: str) -> 
     return finalists_json, finalists_md
 
 
+def _classify_input_json_candidate(path: Path) -> str:
+    if any("sample" in part.lower() for part in path.parts):
+        return "sample path segment"
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return f"unreadable JSON: {exc}"
+
+    if not isinstance(payload, dict):
+        return "input JSON must be an object"
+    if payload.get("is_sample") is True:
+        return "payload marked is_sample=true"
+
+    ranked_runs = payload.get("ranked_runs")
+    if not isinstance(ranked_runs, list) or not ranked_runs:
+        return "missing non-empty ranked_runs list"
+
+    return "real"
+
+
+def _render_no_real_input_json_error(
+    *,
+    input_root: Path,
+    input_json_name: str,
+    rejected_paths: list[tuple[Path, str]],
+) -> str:
+    lines = [
+        f"no real pilot ranking JSON found under {input_root}; run scripts.pilot_sweep on target GPU(s) first",
+        f"discovery searched for '{input_json_name}' files and rejected {len(rejected_paths)} candidate file(s)",
+    ]
+    for rejected_path, reason in rejected_paths[:5]:
+        lines.append(f"- {rejected_path}: {reason}")
+    if len(rejected_paths) > 5:
+        lines.append(f"- ... {len(rejected_paths) - 5} more candidate file(s) omitted")
+    return "\n".join(lines)
+
+
 def _resolve_input_json(input_json_arg: str, input_root_arg: str, input_json_name: str) -> Path:
     if input_json_arg != "auto":
         return Path(input_json_arg)
@@ -93,17 +131,27 @@ def _resolve_input_json(input_json_arg: str, input_root_arg: str, input_json_nam
             f"input_root does not exist: {input_root}; pass --input-json explicitly or emit pilot artifacts first"
         )
 
-    discovered = sorted(
-        path for path in input_root.rglob(input_json_name) if all("sample" not in part.lower() for part in path.parts)
-    )
-    if not discovered:
+    discovered_paths = sorted(path for path in input_root.rglob(input_json_name) if path.is_file())
+    real_candidates = []
+    rejected_paths: list[tuple[Path, str]] = []
+    for path in discovered_paths:
+        classification = _classify_input_json_candidate(path)
+        if classification == "real":
+            real_candidates.append(path)
+        else:
+            rejected_paths.append((path, classification))
+
+    if not real_candidates:
         raise RuntimeError(
-            "no real pilot ranking JSON found under "
-            f"{input_root}; run scripts.pilot_sweep on target GPU(s) first"
+            _render_no_real_input_json_error(
+                input_root=input_root,
+                input_json_name=input_json_name,
+                rejected_paths=rejected_paths,
+            )
         )
 
-    discovered.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return discovered[0]
+    real_candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return real_candidates[0]
 
 
 def _write_finalists_json(

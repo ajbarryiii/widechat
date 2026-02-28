@@ -137,8 +137,25 @@ def test_resolve_input_json_auto_skips_sample_and_selects_latest(tmp_path):
     old_json = real_old_dir / "pilot_ranked_runs.json"
     new_json = real_new_dir / "pilot_ranked_runs.json"
 
-    for target in (sample_json, old_json, new_json):
-        target.write_text("{}", encoding="utf-8")
+    sample_json.write_text(json.dumps({"is_sample": True, "ranked_runs": [{}]}), encoding="utf-8")
+    valid_payload = {
+        "ranked_runs": [
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            }
+        ]
+    }
+    old_json.write_text(json.dumps(valid_payload), encoding="utf-8")
+    new_json.write_text(json.dumps(valid_payload), encoding="utf-8")
 
     os.utime(old_json, (1, 1))
     os.utime(new_json, None)
@@ -153,10 +170,58 @@ def test_resolve_input_json_auto_skips_sample_and_selects_latest(tmp_path):
 def test_resolve_input_json_auto_errors_when_no_real_candidates(tmp_path):
     artifacts_root = tmp_path / "pilot_artifacts"
     (artifacts_root / "sample_bundle").mkdir(parents=True)
-    (artifacts_root / "sample_bundle" / "pilot_ranked_runs.json").write_text("{}", encoding="utf-8")
+    (artifacts_root / "sample_bundle" / "pilot_ranked_runs.json").write_text(
+        json.dumps({"is_sample": True, "ranked_runs": [{}]}),
+        encoding="utf-8",
+    )
 
-    with pytest.raises(RuntimeError, match="no real pilot ranking JSON found"):
+    with pytest.raises(RuntimeError, match="no real pilot ranking JSON found") as exc_info:
         bundle._resolve_input_json("auto", str(artifacts_root), "pilot_ranked_runs.json")
+
+    assert "sample path segment" in str(exc_info.value)
+
+
+def test_resolve_input_json_auto_rejects_payload_marked_sample(tmp_path):
+    artifacts_root = tmp_path / "pilot_artifacts"
+    disguised_sample_dir = artifacts_root / "2026-02-03"
+    disguised_sample_dir.mkdir(parents=True)
+    (disguised_sample_dir / "pilot_ranked_runs.json").write_text(
+        json.dumps(
+            {
+                "is_sample": True,
+                "ranked_runs": [
+                    {
+                        "config": "12x1",
+                        "depth": 12,
+                        "n_branches": 1,
+                        "aspect_ratio": 64,
+                        "selected_tok_per_sec": 565800.0,
+                        "min_val_bpb": 4.0310,
+                        "token_budget": 250000000,
+                        "qualified": True,
+                        "rank": 1,
+                        "disqualify_reason": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="payload marked is_sample=true"):
+        bundle._resolve_input_json("auto", str(artifacts_root), "pilot_ranked_runs.json")
+
+
+def test_resolve_input_json_auto_reports_invalid_json_diagnostics(tmp_path):
+    artifacts_root = tmp_path / "pilot_artifacts"
+    malformed_dir = artifacts_root / "2026-02-03"
+    malformed_dir.mkdir(parents=True)
+    (malformed_dir / "pilot_ranked_runs.json").write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="rejected 1 candidate file") as exc_info:
+        bundle._resolve_input_json("auto", str(artifacts_root), "pilot_ranked_runs.json")
+
+    assert "unreadable JSON" in str(exc_info.value)
 
 
 def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):

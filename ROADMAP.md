@@ -255,6 +255,7 @@ Examples:
               - [x] Add real-artifact auto-discovery mode to `scripts.run_stage2_promotion_bundle` (`--input-json auto`, `--input-root`, `--input-json-name`) so promotion/check-in operators can resolve the latest non-sample `pilot_ranked_runs.json` bundle without hand-editing paths.
               - [x] Fix Stage 2 promotion runbook check-in path handling by emitting absolute shell-escaped ranked/finalist paths so strict check-in commands work when `--input-json` is repo-relative or outside `--output-dir`.
               - [x] Add promotion-bundle preflight dry-run mode (`--dry-run`) so operators can resolve/record canonical ranked-input, finalists-output, optional check-receipt, and runbook paths before executing real target-GPU promotion/check-in runs.
+              - [x] Harden promotion-bundle auto-discovery candidate filtering to reject payload-marked sample JSON and malformed ranked artifacts with explicit rejection diagnostics, so operators can safely resolve real ranked outputs before promotion.
               - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
