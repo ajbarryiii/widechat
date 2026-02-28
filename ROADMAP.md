@@ -191,7 +191,7 @@ Examples:
 - Benchmark noise: use fixed seeds, warmup steps, and identical data/loader settings for fair comparisons.
 
 ## Deliverables
-- [ ] Branch-capable training code path with `n_branches` config.
+- [x] Branch-capable training code path with `n_branches` config.
 - [x] Tests covering correctness, checkpoint compatibility, and parameter counting.
 - [ ] Flash Attention 4 migration for Blackwell GPUs (RTX 5090), with verified runtime backend selection.
 - [ ] Throughput report for baseline and key breadth-heavy configs.
