@@ -51,6 +51,9 @@ def _extract_selected_backend(status_line: str) -> str:
 
 def _validate_environment(require_cuda: bool, require_blackwell: bool) -> None:
     if require_cuda and not torch.cuda.is_available():
+        details = _cuda_unavailable_diagnostics()
+        if details:
+            raise RuntimeError(f"CUDA is required but not available. {details}")
         raise RuntimeError("CUDA is required but not available")
     if require_blackwell:
         if not torch.cuda.is_available():
@@ -58,6 +61,32 @@ def _validate_environment(require_cuda: bool, require_blackwell: bool) -> None:
         major, _minor = torch.cuda.get_device_capability()
         if major < 10:
             raise RuntimeError("Blackwell check failed: CUDA capability must be sm100+")
+
+
+def _cuda_unavailable_diagnostics() -> str:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return ""
+
+    if result.returncode != 0:
+        return ""
+
+    gpu_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not gpu_lines:
+        return ""
+
+    gpu_summary = "; ".join(gpu_lines)
+    return (
+        f"nvidia-smi reports GPU(s): {gpu_summary}. "
+        "This usually means the active PyTorch build lacks CUDA support or is mismatched with the system CUDA driver/runtime."
+    )
 
 
 def _device_metadata() -> dict[str, bool | str | list[int] | None]:

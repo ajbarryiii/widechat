@@ -5,6 +5,7 @@ import pytest
 
 from scripts import flash_backend_smoke
 from scripts.flash_backend_smoke import (
+    _cuda_unavailable_diagnostics,
     _device_metadata,
     _extract_selected_backend,
     _resolve_output_paths,
@@ -29,6 +30,28 @@ def test_validate_environment_fails_when_cuda_required_but_missing(monkeypatch):
     monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     with pytest.raises(RuntimeError, match="CUDA is required"):
         _validate_environment(require_cuda=True, require_blackwell=False)
+
+
+def test_validate_environment_includes_nvidia_smi_diagnostics_when_available(monkeypatch):
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
+
+    class _Result:
+        returncode = 0
+        stdout = "NVIDIA GeForce RTX 5090, 570.86.16\n"
+
+    monkeypatch.setattr("subprocess.run", lambda *args, **kwargs: _Result())
+
+    with pytest.raises(RuntimeError, match=r"nvidia-smi reports GPU\(s\)"):
+        _validate_environment(require_cuda=True, require_blackwell=False)
+
+
+def test_cuda_unavailable_diagnostics_returns_empty_when_nvidia_smi_missing(monkeypatch):
+    def _raise_missing(*args, **kwargs):
+        raise FileNotFoundError("nvidia-smi not found")
+
+    monkeypatch.setattr("subprocess.run", _raise_missing)
+
+    assert _cuda_unavailable_diagnostics() == ""
 
 
 def test_validate_environment_fails_blackwell_requirement_without_cuda(monkeypatch):
