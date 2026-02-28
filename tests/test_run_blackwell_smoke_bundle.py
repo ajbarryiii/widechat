@@ -366,6 +366,94 @@ def test_main_shell_quotes_runbook_commands_for_spaced_paths(tmp_path, monkeypat
     assert "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_content
 
 
+def test_main_writes_resolved_bundle_command_artifact(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell artifacts"
+    command_sh = tmp_path / "commands" / "run blackwell smoke.sh"
+    custom_check_json = tmp_path / "receipts" / "bundle check.json"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
+    monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--run-bundle-check",
+            "--output-check-json",
+            str(custom_check_json),
+            "--output-bundle-command-sh",
+            str(command_sh),
+        ],
+    )
+
+    bundle.main()
+
+    expected_command = " ".join(
+        [
+            "python -m scripts.run_blackwell_smoke_bundle",
+            f"--output-dir {shlex.quote(str(output_dir))}",
+            "--expect-backend fa4",
+            "--require-device-substring 'RTX 5090'",
+            "--run-bundle-check",
+            f"--output-check-json {shlex.quote(str(custom_check_json))}",
+        ]
+    )
+    assert command_sh.read_text(encoding="utf-8") == expected_command + "\n"
+
+    stdout = capsys.readouterr().out
+    assert f"bundle_command_sh={command_sh}" in stdout
+
+
+def test_main_dry_run_writes_resolved_bundle_command_artifact(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell artifacts"
+    command_sh = tmp_path / "commands" / "dry run smoke.sh"
+    calls = {"validated": False, "status": False}
+
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
+        calls["validated"] = True
+
+    def _fake_backend_status_message():
+        calls["status"] = True
+        return "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--output-bundle-command-sh",
+            str(command_sh),
+            "--dry-run",
+        ],
+    )
+
+    bundle.main()
+
+    assert calls["validated"] is False
+    assert calls["status"] is False
+    assert command_sh.is_file()
+    expected_command = " ".join(
+        [
+            "python -m scripts.run_blackwell_smoke_bundle",
+            f"--output-dir {shlex.quote(str(output_dir))}",
+            "--expect-backend fa4",
+            "--require-device-substring 'RTX 5090'",
+        ]
+    )
+    assert command_sh.read_text(encoding="utf-8") == expected_command + "\n"
+
+    stdout = capsys.readouterr().out
+    assert f"bundle_command_sh={command_sh}" in stdout
+
+
 def test_main_dry_run_writes_runbook_without_cuda_probe(tmp_path, monkeypatch, capsys):
     output_dir = tmp_path / "blackwell"
     calls = {"validated": False, "status": False}

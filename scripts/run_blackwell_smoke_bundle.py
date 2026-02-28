@@ -49,6 +49,11 @@ def _parse_args() -> argparse.Namespace:
         help="optional markdown path (defaults to <output-dir>/blackwell_smoke_evidence.md)",
     )
     parser.add_argument(
+        "--output-bundle-command-sh",
+        default="",
+        help="optional path to write the resolved smoke-bundle command",
+    )
+    parser.add_argument(
         "--output-runbook-md",
         default="",
         help="optional markdown path for a check-in runbook (defaults to <output-dir>/blackwell_smoke_runbook.md)",
@@ -107,6 +112,54 @@ def _write_preflight_receipt(path: str, payload: dict) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _resolved_bundle_command(
+    *,
+    output_dir: str,
+    expect_backend: str,
+    require_device_substring: str,
+    output_evidence_md: str,
+    output_runbook_md: str,
+    output_preflight_json: str,
+    output_blocked_md: str,
+    run_bundle_check: bool,
+    output_check_json: str,
+    run_strict_check_in: bool,
+    output_strict_check_json: str,
+) -> str:
+    command = [
+        "python",
+        "-m",
+        "scripts.run_blackwell_smoke_bundle",
+        "--output-dir",
+        output_dir,
+        "--expect-backend",
+        expect_backend,
+    ]
+    if require_device_substring:
+        command.extend(["--require-device-substring", require_device_substring])
+    if output_evidence_md != str(Path(output_dir) / "blackwell_smoke_evidence.md"):
+        command.extend(["--output-evidence-md", output_evidence_md])
+    if output_runbook_md != str(Path(output_dir) / "blackwell_smoke_runbook.md"):
+        command.extend(["--output-runbook-md", output_runbook_md])
+    if output_preflight_json != str(Path(output_dir) / "blackwell_smoke_preflight.json"):
+        command.extend(["--output-preflight-json", output_preflight_json])
+    if output_blocked_md != str(Path(output_dir) / "blackwell_smoke_blocked.md"):
+        command.extend(["--output-blocked-md", output_blocked_md])
+    if run_bundle_check:
+        command.append("--run-bundle-check")
+        command.extend(["--output-check-json", output_check_json])
+    if run_strict_check_in:
+        command.append("--run-strict-check-in")
+        command.extend(["--output-strict-check-json", output_strict_check_json])
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _write_bundle_command(path: str, command: str) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(command + "\n", encoding="utf-8")
 
 
 def _write_runbook_markdown(
@@ -273,6 +326,22 @@ def main() -> None:
     )
     output_preflight_json = args.output_preflight_json or str(Path(args.output_dir) / "blackwell_smoke_preflight.json")
     output_blocked_md = args.output_blocked_md or str(Path(args.output_dir) / "blackwell_smoke_blocked.md")
+    resolved_command = _resolved_bundle_command(
+        output_dir=args.output_dir,
+        expect_backend=args.expect_backend,
+        require_device_substring=args.require_device_substring,
+        output_evidence_md=evidence_md,
+        output_runbook_md=runbook_md,
+        output_preflight_json=output_preflight_json,
+        output_blocked_md=output_blocked_md,
+        run_bundle_check=args.run_bundle_check,
+        output_check_json=output_check_json,
+        run_strict_check_in=args.run_strict_check_in,
+        output_strict_check_json=output_strict_check_json,
+    )
+
+    if args.output_bundle_command_sh:
+        _write_bundle_command(args.output_bundle_command_sh, resolved_command)
 
     _write_runbook_markdown(
         path=runbook_md,
@@ -299,6 +368,11 @@ def main() -> None:
             f"require_device_substring={args.require_device_substring or '<none>'} "
             f"check_json={dry_run_check_json} "
             f"strict_check_json={dry_run_strict_check_json}"
+            + (
+                f" bundle_command_sh={args.output_bundle_command_sh}"
+                if args.output_bundle_command_sh
+                else ""
+            )
         )
         return
 
@@ -427,6 +501,11 @@ def main() -> None:
             f"runbook_md={runbook_md} "
             f"check_json={checker_receipt_path} "
             f"strict_check_json={strict_checker_receipt_path}"
+            + (
+                f" bundle_command_sh={args.output_bundle_command_sh}"
+                if args.output_bundle_command_sh
+                else ""
+            )
         )
     except RuntimeError as exc:
         blocked_payload = _blocked_payload(
