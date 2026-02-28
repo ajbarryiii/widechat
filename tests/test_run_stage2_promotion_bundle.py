@@ -1,4 +1,5 @@
 import json
+import os
 import shlex
 from pathlib import Path
 
@@ -84,7 +85,9 @@ def test_main_writes_stage2_finalists_bundle(tmp_path, monkeypatch, capsys):
     assert "`12x1`: `--depth 12 --n-branches 1 --aspect-ratio 64`" not in body
 
     stdout = capsys.readouterr().out
-    assert "bundle_ok finalists=1" in stdout
+    assert "bundle_ok" in stdout
+    assert "finalists=1" in stdout
+    assert f"input_json={input_json}" in stdout
 
 
 def test_main_rejects_when_no_qualified_finalists(tmp_path, monkeypatch):
@@ -120,6 +123,40 @@ def test_main_rejects_when_no_qualified_finalists(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="expected at least 2 qualified finalists"):
         bundle.main()
+
+
+def test_resolve_input_json_auto_skips_sample_and_selects_latest(tmp_path):
+    artifacts_root = tmp_path / "pilot_artifacts"
+    sample_dir = artifacts_root / "sample_bundle"
+    real_old_dir = artifacts_root / "2026-02-01"
+    real_new_dir = artifacts_root / "2026-02-02"
+    for path in (sample_dir, real_old_dir, real_new_dir):
+        path.mkdir(parents=True)
+
+    sample_json = sample_dir / "pilot_ranked_runs.json"
+    old_json = real_old_dir / "pilot_ranked_runs.json"
+    new_json = real_new_dir / "pilot_ranked_runs.json"
+
+    for target in (sample_json, old_json, new_json):
+        target.write_text("{}", encoding="utf-8")
+
+    os.utime(old_json, (1, 1))
+    os.utime(new_json, None)
+
+    resolved = bundle._resolve_input_json("auto", str(artifacts_root), "pilot_ranked_runs.json")
+
+    assert resolved == new_json
+    assert resolved != sample_json
+    assert resolved.stat().st_mtime >= old_json.stat().st_mtime
+
+
+def test_resolve_input_json_auto_errors_when_no_real_candidates(tmp_path):
+    artifacts_root = tmp_path / "pilot_artifacts"
+    (artifacts_root / "sample_bundle").mkdir(parents=True)
+    (artifacts_root / "sample_bundle" / "pilot_ranked_runs.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="no real pilot ranking JSON found"):
+        bundle._resolve_input_json("auto", str(artifacts_root), "pilot_ranked_runs.json")
 
 
 def test_main_rejects_invalid_finalist_bounds(tmp_path, monkeypatch):

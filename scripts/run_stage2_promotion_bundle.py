@@ -18,8 +18,18 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Stage 2 promotion artifact bundle")
     parser.add_argument(
         "--input-json",
-        required=True,
-        help="pilot ranking JSON produced by scripts.pilot_sweep --output-json",
+        default="auto",
+        help="pilot ranking JSON produced by scripts.pilot_sweep --output-json, or 'auto' to discover latest real bundle",
+    )
+    parser.add_argument(
+        "--input-root",
+        default="artifacts/pilot",
+        help="artifact search root used when --input-json=auto",
+    )
+    parser.add_argument(
+        "--input-json-name",
+        default="pilot_ranked_runs.json",
+        help="ranked-runs JSON filename used when --input-json=auto",
     )
     parser.add_argument(
         "--output-dir",
@@ -66,6 +76,29 @@ def _resolve_output_paths(output_dir: str, output_json: str, output_md: str) -> 
     finalists_json = Path(output_json) if output_json else base / "stage2_finalists.json"
     finalists_md = Path(output_md) if output_md else base / "stage2_finalists.md"
     return finalists_json, finalists_md
+
+
+def _resolve_input_json(input_json_arg: str, input_root_arg: str, input_json_name: str) -> Path:
+    if input_json_arg != "auto":
+        return Path(input_json_arg)
+
+    input_root = Path(input_root_arg)
+    if not input_root.is_dir():
+        raise RuntimeError(
+            f"input_root does not exist: {input_root}; pass --input-json explicitly or emit pilot artifacts first"
+        )
+
+    discovered = sorted(
+        path for path in input_root.rglob(input_json_name) if all("sample" not in part.lower() for part in path.parts)
+    )
+    if not discovered:
+        raise RuntimeError(
+            "no real pilot ranking JSON found under "
+            f"{input_root}; run scripts.pilot_sweep on target GPU(s) first"
+        )
+
+    discovered.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return discovered[0]
 
 
 def _write_finalists_json(
@@ -170,9 +203,10 @@ def _write_runbook_md(
 
 def main() -> None:
     args = _parse_args()
+    input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
     ranked_runs, source_sha256 = _load_ranked_runs_with_source_hash(
-        args.input_json,
+        str(input_json),
         require_real_input=args.require_real_input,
     )
 
@@ -194,7 +228,7 @@ def main() -> None:
 
     _write_finalists_json(
         path=finalists_json,
-        source=args.input_json,
+        source=str(input_json),
         source_sha256=source_sha256,
         max_finalists=args.max_finalists,
         finalists=finalists,
@@ -210,7 +244,7 @@ def main() -> None:
     if args.run_check_in:
         check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
         run_pilot_bundle_check(
-            ranked_json_path=Path(args.input_json),
+            ranked_json_path=input_json,
             finalists_json_path=finalists_json,
             finalists_md_path=finalists_md,
             require_real_input=False,
@@ -222,7 +256,7 @@ def main() -> None:
     if runbook_md is not None:
         _write_runbook_md(
             path=runbook_md,
-            input_json=args.input_json,
+            input_json=str(input_json),
             output_dir=args.output_dir,
             finalists_json=finalists_json,
             finalists_md=finalists_md,
@@ -235,6 +269,7 @@ def main() -> None:
 
     print(
         "bundle_ok "
+        f"input_json={input_json} "
         f"finalists={len(finalists)} "
         f"json={finalists_json} "
         f"md={finalists_md}"

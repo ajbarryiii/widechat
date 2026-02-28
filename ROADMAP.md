@@ -241,9 +241,10 @@ Examples:
             - [x] Add single-command promotion bundle runner (`python -m scripts.run_stage2_promotion_bundle --input-json ... --output-dir artifacts/pilot`) so real ranked outputs can emit canonical Stage 2 finalists JSON/markdown artifacts in one run.
            - [x] Add `--require-real-input` guardrails to `scripts.pilot_promote` and `scripts.run_stage2_promotion_bundle` (with regression tests) so check-in commands fail fast when pointed at sample fixture ranked-run JSON.
             - [x] Add promotion-bundle runbook artifact output (`--output-runbook-md`) in `scripts.run_stage2_promotion_bundle` so operators can record canonical promotion + strict check-in commands with emitted artifact paths.
-            - [x] Add optional strict post-promotion check-in execution (`--run-check-in`, `--output-check-json`) in `scripts.run_stage2_promotion_bundle` so one command can emit finalists artifacts and a check-in receipt for review.
-            - [x] Harden generated promotion runbook commands with shell-escaped artifact paths (including strict check-in receipt paths) so target-GPU operators can execute/check in Stage 2 promotion flows from directories containing spaces without manual command edits.
-            - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
+             - [x] Add optional strict post-promotion check-in execution (`--run-check-in`, `--output-check-json`) in `scripts.run_stage2_promotion_bundle` so one command can emit finalists artifacts and a check-in receipt for review.
+             - [x] Harden generated promotion runbook commands with shell-escaped artifact paths (including strict check-in receipt paths) so target-GPU operators can execute/check in Stage 2 promotion flows from directories containing spaces without manual command edits.
+             - [x] Add real-artifact auto-discovery mode to `scripts.run_stage2_promotion_bundle` (`--input-json auto`, `--input-root`, `--input-json-name`) so promotion/check-in operators can resolve the latest non-sample `pilot_ranked_runs.json` bundle without hand-editing paths.
+             - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
 
