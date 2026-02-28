@@ -72,6 +72,17 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="reuse existing per-config artifacts and skip rerunning completed configs",
     )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="validate planned commands/artifacts without running training",
+    )
+    parser.add_argument(
+        "--output-preflight-json",
+        type=str,
+        default="",
+        help="optional path to write machine-readable preflight receipt",
+    )
     parser.add_argument("--extra-arg", action="append", default=[], help="forward extra arg to each base_train run")
     parser.add_argument(
         "--target",
@@ -308,12 +319,88 @@ def _render_pilot_sweep_runbook(
     return "\n".join(runbook_lines)
 
 
+def _run_preflight(
+    *,
+    args: argparse.Namespace,
+    selected_targets: list[tuple[int, PilotTarget]],
+    is_full_grid: bool,
+) -> dict[str, object]:
+    errors: list[str] = []
+    target_receipts: list[dict[str, object]] = []
+
+    for index, target in selected_targets:
+        target_receipt: dict[str, object] = {
+            "index": index,
+            "config": target.label,
+            "depth": target.depth,
+            "n_branches": target.n_branches,
+            "aspect_ratio": target.aspect_ratio,
+        }
+        try:
+            command, num_iterations = build_pilot_command(
+                target=target,
+                python_exe=args.python_exe,
+                max_seq_len=args.max_seq_len,
+                total_batch_size=args.total_batch_size,
+                device_batch_size=args.device_batch_size,
+                pilot_tokens=args.pilot_tokens,
+                eval_every=args.eval_every,
+                eval_tokens=args.eval_tokens,
+                device_type=args.device_type,
+                extra_args=args.extra_arg,
+            )
+        except ValueError as exc:
+            errors.append(f"{target.label}: {exc}")
+            target_receipt["ok"] = False
+            target_receipt["error"] = str(exc)
+            target_receipts.append(target_receipt)
+            continue
+
+        target_receipt["ok"] = True
+        target_receipt["num_iterations"] = num_iterations
+        target_receipt["token_budget"] = num_iterations * args.total_batch_size
+        target_receipt["command"] = command
+
+        if args.resume_from_artifacts:
+            loaded_run = _load_existing_run_artifact(
+                artifacts_dir=args.artifacts_dir,
+                run_index=index,
+                config_label=target.label,
+            )
+            target_receipt["resume_artifact_found"] = loaded_run is not None
+            if loaded_run is not None:
+                try:
+                    _validate_resume_run_artifact(
+                        loaded_run,
+                        artifacts_dir=args.artifacts_dir,
+                        run_index=index,
+                        config_label=target.label,
+                        expected_token_budget=target_receipt["token_budget"],
+                    )
+                except ValueError as exc:
+                    errors.append(f"{target.label}: {exc}")
+                    target_receipt["ok"] = False
+                    target_receipt["error"] = str(exc)
+
+        target_receipts.append(target_receipt)
+
+    return {
+        "ok": not errors,
+        "is_full_grid": is_full_grid,
+        "resume_from_artifacts": args.resume_from_artifacts,
+        "targets": target_receipts,
+        "errors": errors,
+    }
+
+
 def main() -> None:
     args = _parse_args()
     if args.resume_from_artifacts and not args.artifacts_dir:
         raise ValueError("--resume-from-artifacts requires --artifacts-dir")
     if args.output_runbook_md and not args.artifacts_dir:
         raise ValueError("--output-runbook-md requires --artifacts-dir")
+    if args.output_preflight_json and not args.preflight:
+        raise ValueError("--output-preflight-json requires --preflight")
 
     selected_targets = _resolve_selected_targets(args.target)
     is_full_grid = len(selected_targets) == len(DEFAULT_PILOT_TARGETS)
@@ -327,6 +414,23 @@ def main() -> None:
     ranking_md_path = args.output_md or os.path.join(args.artifacts_dir, "pilot_ranking.md")
     finalists_json_path = args.output_finalists_json or os.path.join(args.artifacts_dir, "stage2_finalists.json")
     finalists_md_path = args.output_finalists_md or os.path.join(args.artifacts_dir, "stage2_finalists.md")
+
+    if args.preflight:
+        receipt = _run_preflight(args=args, selected_targets=selected_targets, is_full_grid=is_full_grid)
+        if args.output_preflight_json:
+            output_dir = os.path.dirname(args.output_preflight_json)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+            with open(args.output_preflight_json, "w", encoding="utf-8") as f:
+                json.dump(receipt, f, indent=2)
+        status = "ok" if receipt["ok"] else "fail"
+        print(f"pilot_sweep_preflight: {status}")
+        if not receipt["ok"]:
+            receipt_errors = receipt["errors"]
+            assert isinstance(receipt_errors, list)
+            failures = "\n".join(f"- {msg}" for msg in receipt_errors)
+            raise ValueError(f"pilot sweep preflight failed:\n{failures}")
+        return
 
     runs = []
 

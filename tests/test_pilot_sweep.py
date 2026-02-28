@@ -553,6 +553,111 @@ def test_main_output_runbook_requires_artifacts_dir(monkeypatch):
         pilot_sweep_script.main()
 
 
+def test_main_output_preflight_json_requires_preflight(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--output-preflight-json",
+            "preflight.json",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--output-preflight-json requires --preflight"):
+        pilot_sweep_script.main()
+
+
+def test_main_preflight_writes_receipt_and_skips_execution(tmp_path, monkeypatch):
+    preflight_json = tmp_path / "pilot_preflight.json"
+
+    def fail_if_run_single_pilot(_command):
+        raise AssertionError("run_single_pilot should not be called in preflight mode")
+
+    monkeypatch.setattr(pilot_sweep_script, "run_single_pilot", fail_if_run_single_pilot)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--target",
+            "12x1",
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+    receipt = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert receipt["ok"] is True
+    assert receipt["is_full_grid"] is False
+    assert receipt["errors"] == []
+    assert [row["config"] for row in receipt["targets"]] == ["12x1"]
+
+
+def test_main_preflight_resume_artifact_failure_writes_receipt(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    preflight_json = tmp_path / "preflight.json"
+    _log_path, metrics_path = _artifact_paths(str(artifacts_dir), run_index=1, config_label="12x1")
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "config": "12x1",
+                "selected_tok_per_sec": 1000,
+                "unstable": False,
+                "token_budget": 100000,
+            },
+            f,
+        )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--resume-from-artifacts",
+            "--target",
+            "12x1",
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="pilot sweep preflight failed"):
+        pilot_sweep_script.main()
+
+    receipt = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert receipt["ok"] is False
+    assert any("expected log file" in err for err in receipt["errors"])
+
+
 def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch):
     total_batch_size = 1000
     num_iterations = 100

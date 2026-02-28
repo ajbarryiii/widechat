@@ -232,11 +232,12 @@ Examples:
    - [ ] Execute the full pilot sweep on target GPU(s) and collect per-config logs/artifacts.
       - [x] Add resumable sweep support (`--resume-from-artifacts`) so interrupted long pilot runs can continue from existing per-config JSON artifacts.
         - [ ] Use resume mode for the real target-GPU sweep and persist final ranking/finalist artifacts.
-             - [x] Add pilot-sweep finalist artifact outputs (`--max-finalists`, `--output-finalists-json`, `--output-finalists-md`) so resumed sweeps can persist promotion-ready evidence in one run.
-             - [x] Add resume-artifact preflight validation for log presence plus required metrics/token-budget consistency, so target-GPU resume runs fail fast on incomplete or stale artifacts.
-             - [x] Add generated pilot sweep runbook output (`--output-runbook-md`) that records canonical initial-run, resume, and strict check-in commands with artifact paths so target-GPU operators can execute/check in reproducibly.
-             - [x] Add partial target execution mode (`--target`) in `scripts/pilot_sweep.py` with canonical config ordering/global artifact indices, so multi-GPU operators can shard long sweeps and later aggregate via full-grid resume without artifact-name drift.
-             - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
+              - [x] Add pilot-sweep finalist artifact outputs (`--max-finalists`, `--output-finalists-json`, `--output-finalists-md`) so resumed sweeps can persist promotion-ready evidence in one run.
+              - [x] Add resume-artifact preflight validation for log presence plus required metrics/token-budget consistency, so target-GPU resume runs fail fast on incomplete or stale artifacts.
+              - [x] Add generated pilot sweep runbook output (`--output-runbook-md`) that records canonical initial-run, resume, and strict check-in commands with artifact paths so target-GPU operators can execute/check in reproducibly.
+              - [x] Add partial target execution mode (`--target`) in `scripts/pilot_sweep.py` with canonical config ordering/global artifact indices, so multi-GPU operators can shard long sweeps and later aggregate via full-grid resume without artifact-name drift.
+              - [x] Add pilot-sweep execution preflight mode (`--preflight`, `--output-preflight-json`) so target-GPU operators can validate planned commands and resumable artifacts (without launching training) before long Stage 1 runs.
+              - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
              - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
                - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
                     - [x] Add pilot artifact-checker auto-discovery mode (`--artifacts-dir auto`, `--artifacts-root`) with candidate-rejection diagnostics so strict check-in commands can target the latest real bundle without hand-editing artifact paths.
