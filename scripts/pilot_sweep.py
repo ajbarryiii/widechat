@@ -13,6 +13,7 @@ import sys
 
 from nanochat.pilot_sweep import (
     DEFAULT_PILOT_TARGETS,
+    PilotTarget,
     apply_ranking_rule,
     build_pilot_command,
     format_finalists_summary,
@@ -72,6 +73,12 @@ def _parse_args() -> argparse.Namespace:
         help="reuse existing per-config artifacts and skip rerunning completed configs",
     )
     parser.add_argument("--extra-arg", action="append", default=[], help="forward extra arg to each base_train run")
+    parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        help="optional config label to run (repeatable, e.g. --target 12x1 --target 6x2)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print commands only")
     return parser.parse_args()
 
@@ -116,6 +123,26 @@ def _artifact_paths(artifacts_dir: str, run_index: int, config_label: str) -> tu
         os.path.join(artifacts_dir, f"{prefix}.log"),
         os.path.join(artifacts_dir, f"{prefix}.json"),
     )
+
+
+def _resolve_selected_targets(selected_labels: list[str]) -> list[tuple[int, PilotTarget]]:
+    if not selected_labels:
+        return list(enumerate(DEFAULT_PILOT_TARGETS, start=1))
+
+    unknown = sorted({label for label in selected_labels if label not in {t.label for t in DEFAULT_PILOT_TARGETS}})
+    if unknown:
+        raise ValueError(f"unknown --target labels: {', '.join(unknown)}")
+
+    duplicate_labels = sorted({label for label in selected_labels if selected_labels.count(label) > 1})
+    if duplicate_labels:
+        raise ValueError(f"duplicate --target labels are not allowed: {', '.join(duplicate_labels)}")
+
+    selected_set = set(selected_labels)
+    return [
+        (index, target)
+        for index, target in enumerate(DEFAULT_PILOT_TARGETS, start=1)
+        if target.label in selected_set
+    ]
 
 
 def _load_existing_run_artifact(
@@ -223,6 +250,8 @@ def _render_pilot_sweep_runbook(
     ]
     if args.device_type:
         base_command.extend(["--device-type", args.device_type])
+    for target in args.target:
+        base_command.extend(["--target", target])
     for extra_arg in args.extra_arg:
         base_command.extend(["--extra-arg", extra_arg])
 
@@ -286,6 +315,14 @@ def main() -> None:
     if args.output_runbook_md and not args.artifacts_dir:
         raise ValueError("--output-runbook-md requires --artifacts-dir")
 
+    selected_targets = _resolve_selected_targets(args.target)
+    is_full_grid = len(selected_targets) == len(DEFAULT_PILOT_TARGETS)
+
+    if not is_full_grid and (args.output_json or args.output_md or args.output_finalists_json or args.output_finalists_md):
+        raise ValueError(
+            "partial --target runs cannot emit ranking/finalist artifacts; run full grid or omit artifact outputs"
+        )
+
     ranked_json_path = args.output_json or os.path.join(args.artifacts_dir, "pilot_ranked_runs.json")
     ranking_md_path = args.output_md or os.path.join(args.artifacts_dir, "pilot_ranking.md")
     finalists_json_path = args.output_finalists_json or os.path.join(args.artifacts_dir, "stage2_finalists.json")
@@ -293,7 +330,7 @@ def main() -> None:
 
     runs = []
 
-    for index, target in enumerate(DEFAULT_PILOT_TARGETS, start=1):
+    for index, target in selected_targets:
         command, num_iterations = build_pilot_command(
             target=target,
             python_exe=args.python_exe,
@@ -365,6 +402,10 @@ def main() -> None:
             )
             with open(args.output_runbook_md, "w", encoding="utf-8") as f:
                 f.write(runbook)
+        return
+
+    if not is_full_grid:
+        print("partial sweep complete: skipping ranking/finalist generation for --target subset run")
         return
 
     ranked = apply_ranking_rule(

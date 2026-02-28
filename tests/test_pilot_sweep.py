@@ -7,6 +7,7 @@ from scripts import pilot_sweep as pilot_sweep_script
 from scripts.pilot_sweep import (
     _artifact_paths,
     _load_existing_run_artifact,
+    _resolve_selected_targets,
     _sanitize_label,
     _validate_resume_run_artifact,
     _write_run_artifacts,
@@ -352,6 +353,31 @@ def test_sanitize_label_replaces_unsafe_chars():
     assert _sanitize_label("!!!") == "run"
 
 
+def test_resolve_selected_targets_defaults_to_full_grid():
+    resolved = _resolve_selected_targets([])
+    assert [target.label for _index, target in resolved] == [target.label for target in pilot_sweep.DEFAULT_PILOT_TARGETS]
+    assert [index for index, _target in resolved] == list(range(1, len(pilot_sweep.DEFAULT_PILOT_TARGETS) + 1))
+
+
+def test_resolve_selected_targets_preserves_canonical_order_and_indices():
+    resolved = _resolve_selected_targets(["4x3", "12x1", "1x10"])
+    assert [(index, target.label) for index, target in resolved] == [
+        (1, "12x1"),
+        (3, "4x3"),
+        (7, "1x10"),
+    ]
+
+
+def test_resolve_selected_targets_rejects_unknown_label():
+    with pytest.raises(ValueError, match="unknown --target labels"):
+        _resolve_selected_targets(["99x99"])
+
+
+def test_resolve_selected_targets_rejects_duplicates():
+    with pytest.raises(ValueError, match="duplicate --target labels"):
+        _resolve_selected_targets(["12x1", "12x1"])
+
+
 def test_write_run_artifacts_writes_log_and_json(tmp_path):
     run_result = {
         "config": "2x5",
@@ -642,3 +668,70 @@ def test_main_dry_run_writes_pilot_runbook(tmp_path, monkeypatch):
     assert f"`{artifacts_dir / 'pilot_ranked_runs.json'}`" in runbook
     assert f"`{artifacts_dir / 'stage2_finalists.json'}`" in runbook
     assert "--extra-arg --compile" in runbook
+
+
+def test_main_partial_targets_skip_ranking_and_preserve_global_artifact_indices(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--target",
+            "4x3",
+            "--target",
+            "1x10",
+        ],
+    )
+
+    def fake_run_single_pilot(_command):
+        output = "pilot output"
+        return output, {
+            "selected_tok_per_sec": 1000,
+            "min_val_bpb": 4.0,
+            "unstable": False,
+            "command_failed": False,
+            "failure_returncode": None,
+        }
+
+    monkeypatch.setattr(pilot_sweep_script, "run_single_pilot", fake_run_single_pilot)
+
+    pilot_sweep_script.main()
+
+    assert (tmp_path / "03-4x3.json").exists()
+    assert (tmp_path / "03-4x3.log").exists()
+    assert (tmp_path / "07-1x10.json").exists()
+    assert (tmp_path / "07-1x10.log").exists()
+    assert not (tmp_path / "pilot_ranked_runs.json").exists()
+
+
+def test_main_partial_targets_reject_ranking_artifact_outputs(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--target",
+            "6x2",
+            "--output-json",
+            "ranked.json",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="partial --target runs cannot emit ranking/finalist artifacts"):
+        pilot_sweep_script.main()
