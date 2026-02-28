@@ -156,6 +156,7 @@ Examples:
          - [x] Add smoke-bundle environment preflight receipts (`--preflight`, `--output-preflight-json`) in `scripts.run_blackwell_smoke_bundle` so operators can capture auditable blocker diagnostics before RTX 5090 execution.
          - [x] Enrich Blackwell smoke-bundle preflight receipts with CUDA device metadata plus `nvidia-smi` inventory/error fields so blocked RTX 5090 runs preserve actionable environment evidence in one artifact.
          - [x] Add blocked-preflight markdown receipt output (`--output-blocked-md`) in `scripts.run_blackwell_smoke_bundle` so failed preflight runs produce a review-friendly blocker artifact alongside machine-readable diagnostics.
+         - [x] Capture and check in an RTX 5090 preflight blocker receipt when CUDA/PyTorch mismatch prevents FA4 smoke execution (`artifacts/blackwell/rtx5090_smoke_20260228/{blackwell_smoke_preflight.json,blackwell_smoke_blocked.md}`).
          - [x] Add offline Blackwell evidence-bundle checker (`python -m scripts.check_blackwell_evidence_bundle --bundle-dir ... --expect-backend fa4`) so checked-in artifacts can be validated for completeness/consistency without requiring GPU access.
         - [x] Add git-tracked bundle validation mode (`--require-git-tracked`) and require the checker command in generated runbooks so check-in reviews can enforce offline evidence verification from committed artifacts.
         - [ ] Run the checker against emitted RTX 5090 artifacts during check-in.
