@@ -10,6 +10,7 @@ python -m scripts.flash_backend_smoke --output-dir artifacts/blackwell_smoke
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -81,13 +82,20 @@ def _validate_environment(require_cuda: bool, require_blackwell: bool, require_d
 
 
 def _cuda_unavailable_diagnostics() -> str:
-    ok, gpu_lines, _error = _query_nvidia_smi_gpus()
+    ok, gpu_lines, error = _query_nvidia_smi_gpus()
+    torch_cuda = torch.version.cuda or "none"
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>")
+    context = (
+        f"PyTorch runtime: torch={torch.__version__}, torch.version.cuda={torch_cuda}, "
+        f"CUDA_VISIBLE_DEVICES={cuda_visible_devices}."
+    )
     if not ok:
-        return ""
+        error_suffix = f" ({error})" if error else ""
+        return f"{context} nvidia-smi probe failed{error_suffix}."
 
     gpu_summary = "; ".join(gpu_lines)
     return (
-        f"nvidia-smi reports GPU(s): {gpu_summary}. "
+        f"{context} nvidia-smi reports GPU(s): {gpu_summary}. "
         "This usually means the active PyTorch build lacks CUDA support or is mismatched with the system CUDA driver/runtime."
     )
 
