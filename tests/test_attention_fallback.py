@@ -429,6 +429,22 @@ class TestBlackwellSelection:
 
         assert interface is None
 
+    def test_blackwell_kernel_load_failure_falls_back_to_sdpa(self, monkeypatch):
+        def fake_get_kernel(_name):
+            raise RuntimeError("kernel download failed")
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (10, 0))
+        monkeypatch.setitem(sys.modules, "kernels", SimpleNamespace(get_kernel=fake_get_kernel))
+
+        interface = fa_module._load_flash_attention_4()
+        assert interface is None
+
+        monkeypatch.setattr(fa_module, "HAS_FA4", False)
+        monkeypatch.setattr(fa_module, "HAS_FA3", False)
+        monkeypatch.setattr(fa_module, "_override_impl", None)
+        assert fa_module._backend_name() == "sdpa"
+
 
 if __name__ == "__main__":
     print(f"PyTorch version: {torch.__version__}")
