@@ -69,6 +69,11 @@ def _parse_args() -> argparse.Namespace:
         help="optional preflight receipt path (defaults to <output-dir>/blackwell_smoke_preflight.json when --preflight)",
     )
     parser.add_argument(
+        "--output-blocked-md",
+        default="",
+        help="optional markdown blocker receipt path (defaults to <output-dir>/blackwell_smoke_blocked.md on failed --preflight)",
+    )
+    parser.add_argument(
         "--run-bundle-check",
         action="store_true",
         help="run offline bundle checker after smoke capture and write a checker receipt",
@@ -138,6 +143,42 @@ def _write_runbook_markdown(
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_blocked_markdown(path: str, payload: dict) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    require_device_substring = payload.get("require_device_substring") or ""
+    quoted_output_dir = shlex.quote(str(payload.get("output_dir") or ""))
+    quoted_expect_backend = shlex.quote(str(payload.get("expect_backend") or "fa4"))
+    quoted_require_device_substring = shlex.quote(require_device_substring)
+    lines = [
+        "# Blackwell Smoke Preflight Blocker",
+        "",
+        "This machine is not ready to run the Blackwell FA4 smoke bundle.",
+        "",
+        "## Receipt",
+        f"- generated_at_utc: `{payload.get('generated_at_utc') or ''}`",
+        f"- ready: `{str(payload.get('ready')).lower()}`",
+        f"- error: `{payload.get('error') or ''}`",
+        f"- expect_backend: `{payload.get('expect_backend') or ''}`",
+        f"- require_device_substring: `{require_device_substring}`",
+        f"- cuda_available: `{str(payload.get('cuda_available')).lower()}`",
+        f"- device_name: `{payload.get('device_name')}`",
+        f"- cuda_capability: `{payload.get('cuda_capability')}`",
+        f"- nvidia_smi_ok: `{str(payload.get('nvidia_smi_ok')).lower()}`",
+        f"- nvidia_smi_error: `{payload.get('nvidia_smi_error')}`",
+        "",
+        "## Next command on RTX 5090",
+        "```bash",
+        "python -m scripts.run_blackwell_smoke_bundle \\",
+        f"  --output-dir {quoted_output_dir} \\",
+        f"  --expect-backend {quoted_expect_backend} \\",
+        f"  --require-device-substring {quoted_require_device_substring}",
+        "```",
+        "",
+    ]
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     if args.dry_run and args.preflight:
@@ -148,6 +189,7 @@ def main() -> None:
     runbook_md = args.output_runbook_md or str(Path(args.output_dir) / "blackwell_smoke_runbook.md")
     output_check_json = args.output_check_json or str(Path(args.output_dir) / "blackwell_bundle_check.json")
     output_preflight_json = args.output_preflight_json or str(Path(args.output_dir) / "blackwell_smoke_preflight.json")
+    output_blocked_md = args.output_blocked_md or str(Path(args.output_dir) / "blackwell_smoke_blocked.md")
 
     _write_runbook_markdown(
         path=runbook_md,
@@ -209,9 +251,11 @@ def main() -> None:
         _write_preflight_receipt(output_preflight_json, payload)
 
         if not preflight_ready:
+            _write_blocked_markdown(output_blocked_md, payload)
             print(
                 "bundle_preflight_blocked "
                 f"preflight_json={output_preflight_json} "
+                f"blocked_md={output_blocked_md} "
                 f"reason={preflight_error}"
             )
             raise RuntimeError(f"Blackwell smoke preflight failed: {preflight_error}")

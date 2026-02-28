@@ -430,6 +430,7 @@ def test_main_preflight_writes_blocked_receipt_and_raises(tmp_path, monkeypatch,
     assert calls["status"] is False
 
     receipt_path = output_dir / "blackwell_smoke_preflight.json"
+    blocked_md = output_dir / "blackwell_smoke_blocked.md"
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert receipt["mode"] == "preflight"
     assert receipt["ready"] is False
@@ -441,10 +442,58 @@ def test_main_preflight_writes_blocked_receipt_and_raises(tmp_path, monkeypatch,
     assert receipt["nvidia_smi_ok"] is False
     assert receipt["nvidia_smi"] == []
     assert "nvidia-smi" in receipt["nvidia_smi_error"]
+    blocked_content = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Smoke Preflight Blocker" in blocked_content
+    assert f"- error: `{reason}`" in blocked_content
+    assert "--require-device-substring 'RTX 5090'" in blocked_content
+    assert "This machine is not ready to run the Blackwell FA4 smoke bundle." in blocked_content
 
     stdout = capsys.readouterr().out
     assert "bundle_preflight_blocked" in stdout
     assert f"preflight_json={receipt_path}" in stdout
+    assert f"blocked_md={blocked_md}" in stdout
+
+
+def test_main_preflight_honors_custom_blocked_markdown_path(tmp_path, monkeypatch):
+    output_dir = tmp_path / "blackwell"
+    blocked_md = tmp_path / "receipts" / "custom blocker.md"
+
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
+        raise RuntimeError("CUDA is required but not available")
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(
+        bundle,
+        "_device_metadata",
+        lambda: {
+            "cuda_available": False,
+            "device_name": None,
+            "cuda_capability": None,
+        },
+    )
+    monkeypatch.setattr(
+        bundle,
+        "_query_nvidia_smi_gpus",
+        lambda: (False, [], "nvidia-smi: command not found"),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--preflight",
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Blackwell smoke preflight failed"):
+        bundle.main()
+
+    assert blocked_md.is_file()
+    content = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Smoke Preflight Blocker" in content
 
 
 def test_main_rejects_preflight_with_dry_run(tmp_path, monkeypatch):
