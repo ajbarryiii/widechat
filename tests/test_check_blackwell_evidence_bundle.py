@@ -561,6 +561,7 @@ def test_main_auto_rejection_error_lists_candidate_reasons(tmp_path, monkeypatch
     sample_bundle = bundle_root / "sample_bundle"
     incomplete_bundle = bundle_root / "run_incomplete"
     malformed_bundle = bundle_root / "run_malformed"
+    runbook_only_bundle = bundle_root / "runbook_only"
     _write_valid_bundle(sample_bundle)
 
     incomplete_bundle.mkdir(parents=True, exist_ok=True)
@@ -571,6 +572,9 @@ def test_main_auto_rejection_error_lists_candidate_reasons(tmp_path, monkeypatch
     (malformed_bundle / "flash_backend_status.log").write_text("status\n", encoding="utf-8")
     (malformed_bundle / "blackwell_smoke_evidence.md").write_text("# evidence\n", encoding="utf-8")
     (malformed_bundle / "blackwell_smoke_runbook.md").write_text("# runbook\n", encoding="utf-8")
+
+    runbook_only_bundle.mkdir(parents=True, exist_ok=True)
+    (runbook_only_bundle / "blackwell_smoke_runbook.md").write_text("# runbook\n", encoding="utf-8")
 
     monkeypatch.setattr(
         "sys.argv",
@@ -587,13 +591,18 @@ def test_main_auto_rejection_error_lists_candidate_reasons(tmp_path, monkeypatch
         checker.main()
 
     message = str(exc_info.value)
-    assert "rejected 3 candidate bundle(s)" in message
+    assert "discovery searched for required Blackwell bundle files" in message
+    assert "rejected 4 candidate bundle(s)" in message
     assert f"{sample_bundle}: sample path segment" in message
     assert (
         f"{incomplete_bundle}: missing files: flash_backend_status.log, blackwell_smoke_evidence.md, "
         "blackwell_smoke_runbook.md"
     ) in message
     assert f"{malformed_bundle}: invalid flash_backend_smoke.json:" in message
+    assert (
+        f"{runbook_only_bundle}: missing files: flash_backend_smoke.json, flash_backend_status.log, "
+        "blackwell_smoke_evidence.md"
+    ) in message
 
 
 def test_main_auto_rejects_missing_bundle_root(tmp_path, monkeypatch):

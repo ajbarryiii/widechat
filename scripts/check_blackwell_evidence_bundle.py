@@ -117,7 +117,7 @@ def _render_no_real_bundle_error(
 ) -> str:
     lines = [
         f"no real Blackwell bundle found under {bundle_root}; run scripts.run_blackwell_smoke_bundle on RTX 5090 first",
-        "discovery searched for 'flash_backend_smoke.json' files and "
+        "discovery searched for required Blackwell bundle files and "
         f"rejected {len(rejected_dirs)} candidate bundle(s)",
     ]
     for rejected_path, reason in rejected_dirs[:5]:
@@ -137,10 +137,13 @@ def _resolve_bundle_dir(bundle_dir_arg: str, bundle_root_arg: str) -> Path:
             f"bundle_root does not exist: {bundle_root}; pass --bundle-dir explicitly or emit a bundle first"
         )
 
-    discovered_dirs = sorted({path.parent for path in bundle_root.rglob("flash_backend_smoke.json") if path.is_file()})
+    discovered_dirs: set[Path] = set()
+    for required_file in _REQUIRED_BUNDLE_FILES:
+        discovered_dirs.update(path.parent for path in bundle_root.rglob(required_file) if path.is_file())
+
     candidates: list[Path] = []
     rejected_dirs: list[tuple[Path, str]] = []
-    for discovered_dir in discovered_dirs:
+    for discovered_dir in sorted(discovered_dirs):
         classification = _classify_bundle_dir(discovered_dir)
         if classification == "real":
             candidates.append(discovered_dir)
