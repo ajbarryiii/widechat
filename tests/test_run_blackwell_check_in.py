@@ -106,6 +106,33 @@ def test_main_allows_sample_bundle_when_requested(tmp_path, monkeypatch):
     assert calls["require_real_bundle"] is False
 
 
+def test_main_dry_run_prints_paths_and_skips_checker(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell"
+
+    def _fake_run_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--expect-backend",
+            "fa4",
+            "--dry-run",
+        ],
+    )
+
+    runner.main()
+
+    stdout = capsys.readouterr().out
+    assert "blackwell_check_in_dry_run_ok" in stdout
+    assert f"bundle_dir={bundle_dir}" in stdout
+    assert f"check_json={bundle_dir / 'blackwell_bundle_check.json'}" in stdout
+
+
 def test_sample_bundle_receipt_stays_in_sync(tmp_path, monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.chdir(repo_root)

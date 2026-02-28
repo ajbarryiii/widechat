@@ -40,6 +40,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="allow sample fixture bundles (for local regression checks)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only resolve paths and print planned checker invocation",
+    )
     return parser.parse_args()
 
 
@@ -73,6 +78,16 @@ def main() -> None:
     args = _parse_args()
     bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
     output_check_json = args.output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
+
+    if args.dry_run:
+        print(
+            "blackwell_check_in_dry_run_ok "
+            f"bundle_dir={bundle_dir} "
+            f"expect_backend={args.expect_backend} "
+            f"check_json={output_check_json} "
+            f"allow_sample_bundle={args.allow_sample_bundle}"
+        )
+        return
 
     selected_backend = run_bundle_check(
         bundle_dir=bundle_dir,
