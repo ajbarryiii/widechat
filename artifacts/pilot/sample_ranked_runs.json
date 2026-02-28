@@ -1,4 +1,5 @@
 {
+  "is_sample": true,
   "max_seq_len": 2048,
   "total_batch_size": 524288,
   "device_batch_size": 16,

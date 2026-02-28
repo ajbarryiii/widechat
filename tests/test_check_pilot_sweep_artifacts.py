@@ -236,6 +236,36 @@ def test_main_check_in_mode_enforces_real_input(tmp_path, monkeypatch):
         checker.main()
 
 
+def test_main_check_in_mode_rejects_sample_payload_flag(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    payload = json.loads(ranked_json.read_text(encoding="utf-8"))
+    payload["is_sample"] = True
+
+    relabeled_ranked = tmp_path / "pilot_ranked_runs.json"
+    relabeled_ranked.write_text(json.dumps(payload), encoding="utf-8")
+
+    finalists_payload = json.loads(finalists_json.read_text(encoding="utf-8"))
+    finalists_payload["source"] = str(relabeled_ranked)
+    finalists_json.write_text(json.dumps(finalists_payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(relabeled_ranked),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--check-in",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--require-real-input rejects sample/fixture"):
+        checker.main()
+
+
 def test_main_require_git_tracked_rejects_untracked(tmp_path, monkeypatch):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     monkeypatch.chdir(tmp_path)
