@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 
 import pytest
@@ -8,6 +9,7 @@ from scripts import pilot_promote
 
 
 def _write_artifacts(base_dir):
+    base_dir.mkdir(parents=True, exist_ok=True)
     ranked_json = base_dir / "pilot_ranked_runs.json"
     finalists_json = base_dir / "stage2_finalists.json"
     finalists_md = base_dir / "stage2_finalists.md"
@@ -370,4 +372,85 @@ def test_main_require_git_tracked_rejects_untracked(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="artifact is not git-tracked"):
+        checker.main()
+
+
+def test_main_auto_discovers_latest_real_artifacts_dir(tmp_path, monkeypatch, capsys):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    older_dir = artifacts_root / "run_older"
+    latest_dir = artifacts_root / "run_latest"
+    sample_dir = artifacts_root / "sample_run"
+    _write_artifacts(older_dir)
+    _write_artifacts(latest_dir)
+    _write_artifacts(sample_dir)
+
+    os.utime(older_dir / "pilot_ranked_runs.json", (100, 100))
+    os.utime(latest_dir / "pilot_ranked_runs.json", (200, 200))
+    os.utime(sample_dir / "pilot_ranked_runs.json", (300, 300))
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    checker.main()
+
+    stdout = capsys.readouterr().out
+    assert "pilot_bundle_check_ok finalists=2" in stdout
+    assert f"ranked_json={latest_dir / 'pilot_ranked_runs.json'}" in stdout
+
+
+def test_main_auto_discovery_lists_rejected_candidates(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    sample_dir = artifacts_root / "sample_run"
+    incomplete_dir = artifacts_root / "run_incomplete"
+    _write_artifacts(sample_dir)
+    incomplete_dir.mkdir(parents=True, exist_ok=True)
+    (incomplete_dir / "pilot_ranked_runs.json").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        checker.main()
+
+    message = str(exc_info.value)
+    assert "no real pilot artifact bundle found" in message
+    assert "rejected 2 candidate bundle(s)" in message
+    assert f"{sample_dir}: sample path segment" in message
+    assert (
+        f"{incomplete_dir}: missing files: stage2_finalists.json, stage2_finalists.md"
+        in message
+    )
+
+
+def test_main_requires_explicit_paths_without_artifacts_dir(tmp_path, monkeypatch):
+    ranked_json, finalists_json, _finalists_md = _write_artifacts(tmp_path)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="missing required artifact paths"):
         checker.main()

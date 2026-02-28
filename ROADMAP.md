@@ -216,6 +216,7 @@ Examples:
             - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
              - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
              - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
+                  - [x] Add pilot artifact-checker auto-discovery mode (`--artifacts-dir auto`, `--artifacts-root`) with candidate-rejection diagnostics so strict check-in commands can target the latest real bundle without hand-editing artifact paths.
                   - [x] Add machine-readable pilot bundle checker receipt output (`--output-check-json`) so check-in reviews can verify the exact checker invocation/result from a committed artifact.
                   - [x] Add single-command strict pilot check-in helper (`python -m scripts.run_pilot_check_in --artifacts-dir ...`) that defaults `--output-check-json` to `<artifacts-dir>/pilot_bundle_check.json` and always enforces checker `--check-in` requirements.
                   - [x] Mark sample pilot ranking fixtures with `"is_sample": true` and add check-in regression coverage so `--check-in` rejects relabeled sample artifacts via payload metadata, not filename alone.

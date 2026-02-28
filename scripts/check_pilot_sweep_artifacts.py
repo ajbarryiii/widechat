@@ -19,15 +19,35 @@ from scripts.pilot_promote import _load_ranked_runs_with_source_hash
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate pilot sweep ranking/finalist artifacts")
-    parser.add_argument("--ranked-json", required=True, help="pilot sweep ranking JSON from scripts.pilot_sweep --output-json")
+    parser.add_argument(
+        "--artifacts-dir",
+        default="",
+        help=(
+            "artifact directory emitted by scripts.pilot_sweep/scripts.run_stage2_promotion_bundle, "
+            "or 'auto' to discover latest real artifact bundle"
+        ),
+    )
+    parser.add_argument(
+        "--artifacts-root",
+        default="artifacts/pilot",
+        help="artifact search root used when --artifacts-dir=auto",
+    )
+    parser.add_argument(
+        "--ranked-json",
+        default="",
+        help=(
+            "pilot sweep ranking JSON path from scripts.pilot_sweep --output-json, "
+            "or filename relative to --artifacts-dir"
+        ),
+    )
     parser.add_argument(
         "--finalists-json",
-        required=True,
+        default="",
         help="finalists JSON from scripts.pilot_sweep --output-finalists-json or scripts.run_stage2_promotion_bundle",
     )
     parser.add_argument(
         "--finalists-md",
-        required=True,
+        default="",
         help="finalists markdown from scripts.pilot_sweep --output-finalists-md or scripts.run_stage2_promotion_bundle",
     )
     parser.add_argument(
@@ -51,6 +71,130 @@ def _parse_args() -> argparse.Namespace:
         help="optional path to write machine-readable checker receipt JSON",
     )
     return parser.parse_args()
+
+
+def _classify_artifacts_dir(
+    artifacts_dir: Path,
+    ranked_json_name: str,
+    finalists_json_name: str,
+    finalists_md_name: str,
+) -> str:
+    if any("sample" in part.lower() for part in artifacts_dir.parts):
+        return "sample path segment"
+
+    missing_files = [
+        name
+        for name in (ranked_json_name, finalists_json_name, finalists_md_name)
+        if not (artifacts_dir / name).is_file()
+    ]
+    if missing_files:
+        return f"missing files: {', '.join(missing_files)}"
+
+    return "real"
+
+
+def _render_no_real_bundle_error(
+    *,
+    artifacts_root: Path,
+    ranked_json_name: str,
+    rejected_dirs: list[tuple[Path, str]],
+) -> str:
+    lines = [
+        (
+            f"no real pilot artifact bundle found under {artifacts_root}; "
+            "run scripts.pilot_sweep on target GPU(s) first"
+        ),
+        (
+            "discovery searched for "
+            f"'{ranked_json_name}' files and rejected {len(rejected_dirs)} candidate bundle(s)"
+        ),
+    ]
+    for rejected_path, reason in rejected_dirs[:5]:
+        lines.append(f"- {rejected_path}: {reason}")
+    if len(rejected_dirs) > 5:
+        lines.append(f"- ... {len(rejected_dirs) - 5} more candidate bundle(s) omitted")
+    return "\n".join(lines)
+
+
+def _resolve_artifact_paths(
+    *,
+    artifacts_dir_arg: str,
+    artifacts_root_arg: str,
+    ranked_json_arg: str,
+    finalists_json_arg: str,
+    finalists_md_arg: str,
+) -> tuple[Path, Path, Path]:
+    default_ranked_name = "pilot_ranked_runs.json"
+    default_finalists_json_name = "stage2_finalists.json"
+    default_finalists_md_name = "stage2_finalists.md"
+
+    if artifacts_dir_arg:
+        ranked_json_name = ranked_json_arg or default_ranked_name
+        finalists_json_name = finalists_json_arg or default_finalists_json_name
+        finalists_md_name = finalists_md_arg or default_finalists_md_name
+
+        if artifacts_dir_arg != "auto":
+            artifacts_dir = Path(artifacts_dir_arg)
+            return (
+                artifacts_dir / ranked_json_name,
+                artifacts_dir / finalists_json_name,
+                artifacts_dir / finalists_md_name,
+            )
+
+        artifacts_root = Path(artifacts_root_arg)
+        if not artifacts_root.is_dir():
+            raise RuntimeError(
+                f"artifacts_root does not exist: {artifacts_root}; pass --artifacts-dir explicitly or emit pilot artifacts first"
+            )
+
+        discovered_dirs = sorted({path.parent for path in artifacts_root.rglob(ranked_json_name)})
+        candidates = []
+        rejected_dirs = []
+        for discovered_dir in discovered_dirs:
+            classification = _classify_artifacts_dir(
+                discovered_dir,
+                ranked_json_name,
+                finalists_json_name,
+                finalists_md_name,
+            )
+            if classification == "real":
+                candidates.append(discovered_dir)
+            else:
+                rejected_dirs.append((discovered_dir, classification))
+
+        if not candidates:
+            raise RuntimeError(
+                _render_no_real_bundle_error(
+                    artifacts_root=artifacts_root,
+                    ranked_json_name=ranked_json_name,
+                    rejected_dirs=rejected_dirs,
+                )
+            )
+
+        candidates.sort(key=lambda path: (path / ranked_json_name).stat().st_mtime, reverse=True)
+        latest_dir = candidates[0]
+        return (
+            latest_dir / ranked_json_name,
+            latest_dir / finalists_json_name,
+            latest_dir / finalists_md_name,
+        )
+
+    missing_args = [
+        name
+        for name, value in (
+            ("--ranked-json", ranked_json_arg),
+            ("--finalists-json", finalists_json_arg),
+            ("--finalists-md", finalists_md_arg),
+        )
+        if not value
+    ]
+    if missing_args:
+        raise RuntimeError(
+            "missing required artifact paths: "
+            f"{', '.join(missing_args)} (or pass --artifacts-dir/--artifacts-dir auto)"
+        )
+
+    return Path(ranked_json_arg), Path(finalists_json_arg), Path(finalists_md_arg)
 
 
 def _assert_files_exist(paths: dict[str, Path]) -> None:
@@ -266,9 +410,13 @@ def run_pilot_bundle_check(
 
 def main() -> None:
     args = _parse_args()
-    ranked_json_path = Path(args.ranked_json)
-    finalists_json_path = Path(args.finalists_json)
-    finalists_md_path = Path(args.finalists_md)
+    ranked_json_path, finalists_json_path, finalists_md_path = _resolve_artifact_paths(
+        artifacts_dir_arg=args.artifacts_dir,
+        artifacts_root_arg=args.artifacts_root,
+        ranked_json_arg=args.ranked_json,
+        finalists_json_arg=args.finalists_json,
+        finalists_md_arg=args.finalists_md,
+    )
     finalists_count = run_pilot_bundle_check(
         ranked_json_path=ranked_json_path,
         finalists_json_path=finalists_json_path,
