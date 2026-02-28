@@ -71,6 +71,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path to write machine-readable checker receipt JSON",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only resolve artifact paths and print planned checker settings",
+    )
     return parser.parse_args()
 
 
@@ -426,6 +431,20 @@ def main() -> None:
         finalists_json_arg=args.finalists_json,
         finalists_md_arg=args.finalists_md,
     )
+
+    if args.dry_run:
+        print(
+            "pilot_bundle_check_dry_run_ok "
+            f"ranked_json={ranked_json_path} "
+            f"finalists_json={finalists_json_path} "
+            f"finalists_md={finalists_md_path} "
+            f"require_real_input={args.require_real_input} "
+            f"require_git_tracked={args.require_git_tracked} "
+            f"check_in={args.check_in}"
+            + (f" check_json={args.output_check_json}" if args.output_check_json else "")
+        )
+        return
+
     finalists_count = run_pilot_bundle_check(
         ranked_json_path=ranked_json_path,
         finalists_json_path=finalists_json_path,

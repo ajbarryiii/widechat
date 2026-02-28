@@ -111,6 +111,37 @@ def test_main_accepts_valid_artifacts(tmp_path, monkeypatch, capsys):
     assert "pilot_bundle_check_ok finalists=2" in capsys.readouterr().out
 
 
+def test_main_dry_run_prints_resolved_paths_and_skips_validation(tmp_path, monkeypatch, capsys):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+
+    def _fail_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("validation should not run in dry-run mode")
+
+    monkeypatch.setattr(checker, "run_pilot_bundle_check", _fail_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--check-in",
+            "--dry-run",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert "pilot_bundle_check_dry_run_ok" in stdout
+    assert f"ranked_json={ranked_json}" in stdout
+    assert f"finalists_json={finalists_json}" in stdout
+    assert f"finalists_md={finalists_md}" in stdout
+    assert "check_in=True" in stdout
+
+
 def test_main_writes_machine_readable_receipt(tmp_path, monkeypatch, capsys):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     receipt_json = tmp_path / "pilot_bundle_check.json"
