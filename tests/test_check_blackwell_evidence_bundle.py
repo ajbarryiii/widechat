@@ -54,7 +54,8 @@ def _write_valid_bundle(bundle_dir, *, cuda_capability=(10, 0)):
                 "## Check-in checklist",
                 "- Ensure command prints `bundle_ok selected=fa4`.",
                 "- Run `python -m scripts.check_blackwell_evidence_bundle --bundle-dir",
-                f" {bundle_dir} --expect-backend fa4 --check-in`.",
+                f" {bundle_dir} --expect-backend fa4 --check-in --output-check-json",
+                f" {bundle_dir}/blackwell_bundle_check.json`.",
                 "",
             ]
         ),
@@ -189,3 +190,37 @@ def test_main_check_in_mode_rejects_non_blackwell_bundle(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="artifact is not from Blackwell"):
         checker.main()
+
+
+def test_main_writes_machine_readable_check_report(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    _write_valid_bundle(bundle_dir)
+    report_path = bundle_dir / "check_report.json"
+
+    def _fake_run(cmd, capture_output, text, check):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checker.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_blackwell_evidence_bundle.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--expect-backend",
+            "fa4",
+            "--check-in",
+            "--output-check-json",
+            str(report_path),
+        ],
+    )
+
+    checker.main()
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["bundle_dir"] == str(bundle_dir)
+    assert payload["expect_backend"] == "fa4"
+    assert payload["selected_backend"] == "fa4"
+    assert payload["check_in"] is True
+    assert payload["require_blackwell"] is True
+    assert payload["require_git_tracked"] is True

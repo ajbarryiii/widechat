@@ -5,6 +5,7 @@ python -m scripts.check_blackwell_evidence_bundle --bundle-dir artifacts/blackwe
 """
 
 import argparse
+import json
 import subprocess
 from pathlib import Path
 
@@ -38,6 +39,11 @@ def _parse_args() -> argparse.Namespace:
         "--check-in",
         action="store_true",
         help="enable strict check-in mode (requires Blackwell and git-tracked artifacts)",
+    )
+    parser.add_argument(
+        "--output-check-json",
+        default="",
+        help="optional path for machine-readable bundle-check receipt",
     )
     return parser.parse_args()
 
@@ -79,6 +85,7 @@ def _assert_evidence_content(evidence_text: str, selected_backend: str) -> None:
 def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend: str) -> None:
     expected_path = str(bundle_dir)
     expected_evidence = str(bundle_dir / "blackwell_smoke_evidence.md")
+    expected_check_json = str(bundle_dir / "blackwell_bundle_check.json")
     expected_snippets = [
         "# Blackwell Smoke Bundle Runbook",
         "python -m scripts.run_blackwell_smoke_bundle",
@@ -86,12 +93,37 @@ def _assert_runbook_content(runbook_text: str, bundle_dir: Path, expect_backend:
         f"--output-dir {expected_path}",
         f"--expect-backend {expect_backend}",
         "--check-in",
+        "--output-check-json",
+        expected_check_json,
         f"- `{expected_evidence}`",
         f"- Ensure command prints `bundle_ok selected={expect_backend}`.",
     ]
     for snippet in expected_snippets:
         if snippet not in runbook_text:
             raise RuntimeError(f"runbook markdown missing snippet: {snippet}")
+
+
+def _write_check_report(
+    path: str,
+    *,
+    bundle_dir: Path,
+    expect_backend: str,
+    selected_backend: str,
+    check_in: bool,
+    require_blackwell: bool,
+    require_git_tracked: bool,
+) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "bundle_dir": str(bundle_dir),
+        "expect_backend": expect_backend,
+        "selected_backend": selected_backend,
+        "check_in": check_in,
+        "require_blackwell": require_blackwell,
+        "require_git_tracked": require_git_tracked,
+    }
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -118,6 +150,17 @@ def main() -> None:
 
     runbook_text = paths["runbook_md"].read_text(encoding="utf-8")
     _assert_runbook_content(runbook_text, bundle_dir, args.expect_backend)
+
+    if args.output_check_json:
+        _write_check_report(
+            args.output_check_json,
+            bundle_dir=bundle_dir,
+            expect_backend=args.expect_backend,
+            selected_backend=selected_backend,
+            check_in=args.check_in,
+            require_blackwell=require_blackwell,
+            require_git_tracked=require_git_tracked,
+        )
 
     print(f"bundle_check_ok selected={selected_backend} bundle_dir={bundle_dir}")
 
