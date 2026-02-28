@@ -59,6 +59,7 @@ def main() -> None:
             "n_branches": target.n_branches,
             "aspect_ratio": target.aspect_ratio,
             "num_iterations": num_iterations,
+            "token_budget": num_iterations * args.total_batch_size,
             "command": command,
         }
         if args.dry_run:

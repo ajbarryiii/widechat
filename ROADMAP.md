@@ -179,7 +179,7 @@ Examples:
 - [ ] Apply ranking rule.
   - [ ] Disqualify unstable runs.
   - [ ] Disqualify runs >5% slower than baseline unless loss is clearly better.
-  - [ ] Rank remaining by val bpb at equal token budget.
+  - [x] Rank remaining by val bpb at equal token budget.
 
 ### Stage 2: Long runs (top candidates only)
 - [ ] Promote top 2-3 configs from pilots.

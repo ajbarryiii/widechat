@@ -60,9 +60,27 @@ Step 00075 | Validation bpb: 4.001234
 def test_apply_ranking_rule_disqualifies_slow_without_clear_gain():
     ranked = apply_ranking_rule(
         [
-            {"config": "12x1", "selected_tok_per_sec": 1000, "min_val_bpb": 4.10, "unstable": False},
-            {"config": "2x5", "selected_tok_per_sec": 930, "min_val_bpb": 4.09, "unstable": False},
-            {"config": "1x10", "selected_tok_per_sec": 980, "min_val_bpb": 4.20, "unstable": True},
+            {
+                "config": "12x1",
+                "selected_tok_per_sec": 1000,
+                "min_val_bpb": 4.10,
+                "token_budget": 250_000_000,
+                "unstable": False,
+            },
+            {
+                "config": "2x5",
+                "selected_tok_per_sec": 930,
+                "min_val_bpb": 4.09,
+                "token_budget": 250_000_000,
+                "unstable": False,
+            },
+            {
+                "config": "1x10",
+                "selected_tok_per_sec": 980,
+                "min_val_bpb": 4.20,
+                "token_budget": 250_000_000,
+                "unstable": True,
+            },
         ],
         slowdown_threshold_pct=5.0,
         clear_bpb_gain=0.02,
@@ -79,8 +97,20 @@ def test_apply_ranking_rule_disqualifies_slow_without_clear_gain():
 def test_apply_ranking_rule_keeps_slow_model_if_clearly_better():
     ranked = apply_ranking_rule(
         [
-            {"config": "12x1", "selected_tok_per_sec": 1000, "min_val_bpb": 4.10, "unstable": False},
-            {"config": "6x2", "selected_tok_per_sec": 940, "min_val_bpb": 4.05, "unstable": False},
+            {
+                "config": "12x1",
+                "selected_tok_per_sec": 1000,
+                "min_val_bpb": 4.10,
+                "token_budget": 250_000_000,
+                "unstable": False,
+            },
+            {
+                "config": "6x2",
+                "selected_tok_per_sec": 940,
+                "min_val_bpb": 4.05,
+                "token_budget": 250_000_000,
+                "unstable": False,
+            },
         ],
         slowdown_threshold_pct=5.0,
         clear_bpb_gain=0.02,
@@ -91,6 +121,33 @@ def test_apply_ranking_rule_keeps_slow_model_if_clearly_better():
     assert row["rank"] == 1
 
 
+def test_apply_ranking_rule_disqualifies_mismatched_token_budget():
+    ranked = apply_ranking_rule(
+        [
+            {
+                "config": "12x1",
+                "selected_tok_per_sec": 1000,
+                "min_val_bpb": 4.10,
+                "token_budget": 250_000_000,
+                "unstable": False,
+            },
+            {
+                "config": "4x3",
+                "selected_tok_per_sec": 1200,
+                "min_val_bpb": 4.00,
+                "token_budget": 200_000_000,
+                "unstable": False,
+            },
+        ],
+        slowdown_threshold_pct=5.0,
+        clear_bpb_gain=0.02,
+    )
+
+    row = next(item for item in ranked if item["config"] == "4x3")
+    assert row["qualified"] is False
+    assert row["disqualify_reason"] == "token-budget-mismatch"
+
+
 def test_format_ranking_table_emits_markdown_rows():
     rows = [
         {
@@ -98,6 +155,7 @@ def test_format_ranking_table_emits_markdown_rows():
             "config": "12x1",
             "selected_tok_per_sec": 1000,
             "min_val_bpb": 4.1,
+            "token_budget": 250000000,
             "qualified": True,
             "disqualify_reason": None,
         },
@@ -106,11 +164,12 @@ def test_format_ranking_table_emits_markdown_rows():
             "config": "2x5",
             "selected_tok_per_sec": 900,
             "min_val_bpb": 4.2,
+            "token_budget": 250000000,
             "qualified": False,
             "disqualify_reason": "slow>5.0%",
         },
     ]
     table = format_ranking_table(rows)
-    assert "| Rank | Config | tok/sec | vs 12x1 | min val bpb | Status |" in table
-    assert "| 1 | 12x1 | 1,000 | +0.0% | 4.1000 | qualified |" in table
-    assert "| - | 2x5 | 900 | -10.0% | 4.2000 | disqualified (slow>5.0%) |" in table
+    assert "| Rank | Config | tok/sec | vs 12x1 | min val bpb | token budget | Status |" in table
+    assert "| 1 | 12x1 | 1,000 | +0.0% | 4.1000 | 250,000,000 | qualified |" in table
+    assert "| - | 2x5 | 900 | -10.0% | 4.2000 | 250,000,000 | disqualified (slow>5.0%) |" in table

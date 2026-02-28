@@ -148,6 +148,8 @@ def apply_ranking_rule(
         tok_per_sec = _as_float(run.get("selected_tok_per_sec"), "selected_tok_per_sec")
         slowdown_pct = 100.0 * (1.0 - tok_per_sec / baseline_tok)
         unstable = bool(run.get("unstable", False))
+        baseline_token_budget = baseline.get("token_budget")
+        run_token_budget = run.get("token_budget")
         min_val_bpb = _as_optional_float(run.get("min_val_bpb"))
         clearly_better = (
             baseline_bpb is not None
@@ -158,6 +160,8 @@ def apply_ranking_rule(
         disqualify_reason = None
         if unstable:
             disqualify_reason = "unstable"
+        elif baseline_token_budget is not None and run_token_budget != baseline_token_budget:
+            disqualify_reason = "token-budget-mismatch"
         elif slowdown_pct > slowdown_threshold_pct and not clearly_better:
             disqualify_reason = f"slow>{slowdown_threshold_pct:.1f}%"
 
@@ -192,8 +196,8 @@ def format_ranking_table(rows: list[dict[str, int | float | bool | str | None]])
     baseline_row = next(row for row in rows if row["config"] == "12x1")
     baseline_tok = _as_float(baseline_row.get("selected_tok_per_sec"), "selected_tok_per_sec")
     output_lines = [
-        "| Rank | Config | tok/sec | vs 12x1 | min val bpb | Status |",
-        "| ---: | --- | ---: | ---: | ---: | --- |",
+        "| Rank | Config | tok/sec | vs 12x1 | min val bpb | token budget | Status |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | --- |",
     ]
     for row in rows:
         status = "qualified"
@@ -203,6 +207,7 @@ def format_ranking_table(rows: list[dict[str, int | float | bool | str | None]])
         ratio_pct = 100.0 * (selected_tok_per_sec / baseline_tok - 1.0)
         sign = "+" if ratio_pct >= 0 else ""
         min_val_bpb = _as_optional_float(row.get("min_val_bpb"))
+        token_budget = row.get("token_budget")
         output_lines.append(
             "| "
             + " | ".join(
@@ -212,6 +217,7 @@ def format_ranking_table(rows: list[dict[str, int | float | bool | str | None]])
                     f"{int(selected_tok_per_sec):,}",
                     f"{sign}{ratio_pct:.1f}%",
                     "n/a" if min_val_bpb is None else f"{min_val_bpb:.4f}",
+                    "n/a" if token_budget is None else f"{int(token_budget):,}",
                     status,
                 ]
             )
