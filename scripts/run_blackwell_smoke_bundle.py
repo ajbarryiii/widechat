@@ -16,6 +16,7 @@ from scripts.flash_backend_smoke import (
     _write_status_line,
     backend_status_message,
 )
+from scripts.check_blackwell_evidence_bundle import run_bundle_check
 from scripts.validate_blackwell_smoke_artifact import (
     _load_artifact,
     _load_status_line,
@@ -47,6 +48,16 @@ def _parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="only emit runbook/planned paths without probing CUDA or writing smoke artifacts",
+    )
+    parser.add_argument(
+        "--run-bundle-check",
+        action="store_true",
+        help="run offline bundle checker after smoke capture and write a checker receipt",
+    )
+    parser.add_argument(
+        "--output-check-json",
+        default="",
+        help="optional checker receipt path (defaults to <output-dir>/blackwell_bundle_check.json when --run-bundle-check)",
     )
     return parser.parse_args()
 
@@ -90,6 +101,7 @@ def main() -> None:
     artifact_json, status_line_path = _resolve_output_paths("", "", args.output_dir)
     evidence_md = args.output_evidence_md or str(Path(args.output_dir) / "blackwell_smoke_evidence.md")
     runbook_md = args.output_runbook_md or str(Path(args.output_dir) / "blackwell_smoke_runbook.md")
+    output_check_json = args.output_check_json or str(Path(args.output_dir) / "blackwell_bundle_check.json")
 
     _write_runbook_markdown(
         path=runbook_md,
@@ -99,13 +111,16 @@ def main() -> None:
     )
 
     if args.dry_run:
+        dry_run_check_json = output_check_json if args.run_bundle_check else "<none>"
         print(
             "bundle_dry_run_ok "
             f"expect_backend={args.expect_backend} "
             f"artifact_json={artifact_json} "
             f"status_line={status_line_path} "
             f"evidence_md={evidence_md} "
-            f"runbook_md={runbook_md}"
+            f"runbook_md={runbook_md} "
+            f"run_bundle_check={args.run_bundle_check} "
+            f"check_json={dry_run_check_json}"
         )
         return
 
@@ -140,13 +155,27 @@ def main() -> None:
         status_line_ok=True,
     )
 
+    checker_receipt_path = "<none>"
+    if args.run_bundle_check:
+        run_bundle_check(
+            bundle_dir=Path(args.output_dir),
+            expect_backend=args.expect_backend,
+            check_in=False,
+            require_blackwell=True,
+            require_git_tracked=False,
+            require_real_bundle=False,
+            output_check_json=output_check_json,
+        )
+        checker_receipt_path = output_check_json
+
     print(
         "bundle_ok "
         f"selected={selected_backend} "
         f"artifact_json={artifact_json} "
         f"status_line={status_line_path} "
         f"evidence_md={evidence_md} "
-        f"runbook_md={runbook_md}"
+        f"runbook_md={runbook_md} "
+        f"check_json={checker_receipt_path}"
     )
 
 

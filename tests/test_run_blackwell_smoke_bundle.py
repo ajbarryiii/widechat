@@ -46,6 +46,49 @@ def test_main_writes_validated_artifact_bundle(tmp_path, monkeypatch, capsys):
     stdout = capsys.readouterr().out
     assert "bundle_ok selected=fa4" in stdout
     assert f"runbook_md={runbook_md}" in stdout
+    assert "check_json=<none>" in stdout
+
+
+def test_main_optionally_runs_bundle_checker_and_writes_receipt(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    calls = {}
+
+    def _fake_run_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return "fa4"
+
+    monkeypatch.setattr(bundle, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell: None)
+    monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.get_device_name", lambda: "RTX 5090")
+    monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--run-bundle-check",
+        ],
+    )
+
+    bundle.main()
+
+    expected_receipt = output_dir / "blackwell_bundle_check.json"
+    assert calls == {
+        "bundle_dir": output_dir,
+        "expect_backend": "fa4",
+        "check_in": False,
+        "require_blackwell": True,
+        "require_git_tracked": False,
+        "require_real_bundle": False,
+        "output_check_json": str(expected_receipt),
+    }
+
+    stdout = capsys.readouterr().out
+    assert f"check_json={expected_receipt}" in stdout
 
 
 def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):
@@ -158,3 +201,39 @@ def test_main_dry_run_writes_runbook_without_cuda_probe(tmp_path, monkeypatch, c
     stdout = capsys.readouterr().out
     assert "bundle_dry_run_ok" in stdout
     assert f"artifact_json={output_dir / 'flash_backend_smoke.json'}" in stdout
+    assert "run_bundle_check=False" in stdout
+    assert "check_json=<none>" in stdout
+
+
+def test_main_dry_run_reports_checker_receipt_when_enabled(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    calls = {"validated": False, "status": False}
+
+    def _fake_validate_environment(require_cuda, require_blackwell):
+        calls["validated"] = True
+
+    def _fake_backend_status_message():
+        calls["status"] = True
+        return "Flash Attention backend selection: selected=fa4, mode=auto"
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(bundle, "backend_status_message", _fake_backend_status_message)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+            "--run-bundle-check",
+            "--dry-run",
+        ],
+    )
+
+    bundle.main()
+
+    assert calls["validated"] is False
+    assert calls["status"] is False
+
+    stdout = capsys.readouterr().out
+    assert "run_bundle_check=True" in stdout
+    assert f"check_json={output_dir / 'blackwell_bundle_check.json'}" in stdout
