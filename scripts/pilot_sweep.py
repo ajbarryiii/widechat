@@ -5,6 +5,7 @@ python -m scripts.pilot_sweep --device-type cuda --total-batch-size 524288 --dev
 """
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -83,6 +84,12 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path to write machine-readable preflight receipt",
     )
+    parser.add_argument(
+        "--output-blocked-md",
+        type=str,
+        default="",
+        help="optional path to write markdown blocker diagnostics when preflight/run fails",
+    )
     parser.add_argument("--extra-arg", action="append", default=[], help="forward extra arg to each base_train run")
     parser.add_argument(
         "--target",
@@ -108,6 +115,45 @@ def _sanitize_label(label: str) -> str:
 def _stable_json_sha256(payload: object) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_blocked_markdown(
+    *,
+    output_path: str,
+    mode: str,
+    reason: str,
+    args: argparse.Namespace,
+) -> None:
+    path = os.path.abspath(output_path)
+    output_dir = os.path.dirname(path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    lines = [
+        "# Pilot Sweep Blocked",
+        "",
+        "## Receipt",
+        f"- generated_at_utc: `{_now_utc()}`",
+        f"- mode: `{mode}`",
+        f"- preflight: `{str(args.preflight).lower()}`",
+        f"- dry_run: `{str(args.dry_run).lower()}`",
+        f"- device_type: `{args.device_type or '<auto>'}`",
+        f"- artifacts_dir: `{args.artifacts_dir or '<none>'}`",
+        f"- output_preflight_json: `{args.output_preflight_json or '<none>'}`",
+        f"- command: `{json.dumps([*sys.argv])}`",
+        "",
+        "## Blocker",
+        "```text",
+        reason,
+        "```",
+        "",
+    ]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
 
 
 def _write_run_artifacts(
@@ -393,8 +439,7 @@ def _run_preflight(
     }
 
 
-def main() -> None:
-    args = _parse_args()
+def _run(args: argparse.Namespace) -> None:
     if args.resume_from_artifacts and not args.artifacts_dir:
         raise ValueError("--resume-from-artifacts requires --artifacts-dir")
     if args.output_runbook_md and not args.artifacts_dir:
@@ -592,6 +637,21 @@ def main() -> None:
         )
         with open(args.output_runbook_md, "w", encoding="utf-8") as f:
             f.write(runbook)
+
+
+def main() -> None:
+    args = _parse_args()
+    try:
+        _run(args)
+    except (RuntimeError, ValueError) as exc:
+        if args.output_blocked_md:
+            _write_blocked_markdown(
+                output_path=args.output_blocked_md,
+                mode="preflight" if args.preflight else "run",
+                reason=str(exc),
+                args=args,
+            )
+        raise
 
 
 if __name__ == "__main__":

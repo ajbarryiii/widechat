@@ -249,7 +249,8 @@ Examples:
               - [x] Add pilot-sweep execution preflight mode (`--preflight`, `--output-preflight-json`) so target-GPU operators can validate planned commands and resumable artifacts (without launching training) before long Stage 1 runs.
               - [x] Add offline pilot artifact-bundle checker (`python -m scripts.check_pilot_sweep_artifacts --ranked-json ... --finalists-json ... --finalists-md ...`) so check-in review can validate ranking/finalist artifact consistency without rerunning long GPU sweeps.
              - [ ] Execute resume mode on target GPU(s) and check in the resulting ranking/finalist artifacts.
-                - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
+                - [x] Add blocked-receipt markdown output in `scripts.pilot_sweep.py` (`--output-blocked-md`) so failed preflight/runtime attempts can persist check-in-friendly diagnostics when target-GPU execution is unavailable.
+                 - [ ] Run the pilot artifact-bundle checker against the emitted real target-GPU ranking/finalist artifacts during check-in.
                      - [x] Add pilot artifact-checker auto-discovery mode (`--artifacts-dir auto`, `--artifacts-root`) with candidate-rejection diagnostics so strict check-in commands can target the latest real bundle without hand-editing artifact paths.
                      - [x] Add machine-readable pilot bundle checker receipt output (`--output-check-json`) so check-in reviews can verify the exact checker invocation/result from a committed artifact.
                      - [x] Add per-artifact SHA256 digests to pilot bundle checker receipts (`artifact_sha256`) so check-in evidence binds the exact ranked/finalists artifacts reviewed.

@@ -658,6 +658,73 @@ def test_main_preflight_resume_artifact_failure_writes_receipt(tmp_path, monkeyp
     assert any("expected log file" in err for err in receipt["errors"])
 
 
+def test_main_preflight_failure_writes_blocked_markdown(tmp_path, monkeypatch):
+    blocked_md = tmp_path / "pilot_sweep_blocked.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "5",
+            "--target",
+            "12x1",
+            "--preflight",
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="pilot sweep preflight failed"):
+        pilot_sweep_script.main()
+
+    blocked_text = blocked_md.read_text(encoding="utf-8")
+    assert "# Pilot Sweep Blocked" in blocked_text
+    assert "- mode: `preflight`" in blocked_text
+    assert "pilot sweep preflight failed" in blocked_text
+
+
+def test_main_runtime_failure_writes_blocked_markdown(tmp_path, monkeypatch):
+    blocked_md = tmp_path / "pilot_sweep_runtime_blocked.md"
+
+    def raise_runtime_error(_command):
+        raise RuntimeError("target GPU is unavailable")
+
+    monkeypatch.setattr(pilot_sweep_script, "run_single_pilot", raise_runtime_error)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--target",
+            "12x1",
+            "--output-blocked-md",
+            str(blocked_md),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="target GPU is unavailable"):
+        pilot_sweep_script.main()
+
+    blocked_text = blocked_md.read_text(encoding="utf-8")
+    assert "# Pilot Sweep Blocked" in blocked_text
+    assert "- mode: `run`" in blocked_text
+    assert "target GPU is unavailable" in blocked_text
+
+
 def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch):
     total_batch_size = 1000
     num_iterations = 100
