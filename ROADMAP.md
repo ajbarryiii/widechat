@@ -219,6 +219,7 @@ Examples:
                   - [ ] Execute `python -m scripts.run_pilot_check_in --artifacts-dir ...` against emitted real target-GPU ranking/finalist artifacts during check-in.
                      - [x] Add explicit sample-fixture override to strict helper (`--allow-sample-input`) while defaulting to real-input enforcement, with regression coverage for both default and override paths.
                      - [x] Fix strict-helper sample override plumbing so `--allow-sample-input` bypasses only the real-input guard (while preserving `--check-in` git-tracked checks) for fixture-based end-to-end validation.
+                     - [x] Add auto-discovery mode to strict helper (`--artifacts-dir auto`, `--artifacts-root`) so check-in commands can resolve the latest real artifact bundle and fail fast when only sample directories exist.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.
    - [x] Disqualify unstable runs.

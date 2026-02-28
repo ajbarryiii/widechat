@@ -1,4 +1,15 @@
+import os
+
+import pytest
+
 from scripts import run_pilot_check_in as runner
+
+
+def _write_artifact_files(artifacts_dir):
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    (artifacts_dir / "pilot_ranked_runs.json").write_text("{}\n", encoding="utf-8")
+    (artifacts_dir / "stage2_finalists.json").write_text("{}\n", encoding="utf-8")
+    (artifacts_dir / "stage2_finalists.md").write_text("# fixture\n", encoding="utf-8")
 
 
 def test_main_runs_strict_check_in_with_default_receipt(tmp_path, monkeypatch, capsys):
@@ -94,3 +105,60 @@ def test_main_allow_sample_input_disables_real_input_guard(tmp_path, monkeypatch
 
     assert calls["require_real_input"] is False
     assert calls["allow_sample_input_in_check_in"] is True
+
+
+def test_main_auto_selects_latest_real_artifacts_dir(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    older_artifacts = artifacts_root / "run_older"
+    latest_artifacts = artifacts_root / "run_latest"
+    sample_artifacts = artifacts_root / "sample_run"
+    _write_artifact_files(older_artifacts)
+    _write_artifact_files(latest_artifacts)
+    _write_artifact_files(sample_artifacts)
+
+    os.utime(older_artifacts / "pilot_ranked_runs.json", (100, 100))
+    os.utime(latest_artifacts / "pilot_ranked_runs.json", (200, 200))
+    os.utime(sample_artifacts / "pilot_ranked_runs.json", (300, 300))
+
+    calls = {}
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        calls.update(kwargs)
+        return 2
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    runner.main()
+
+    assert calls["ranked_json_path"] == latest_artifacts / "pilot_ranked_runs.json"
+    assert calls["output_check_json"] == str(latest_artifacts / "pilot_bundle_check.json")
+
+
+def test_main_auto_rejects_when_no_real_artifacts_dir_exists(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    sample_artifacts = artifacts_root / "sample_run"
+    _write_artifact_files(sample_artifacts)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="no real pilot artifact bundle found"):
+        runner.main()

@@ -1,7 +1,7 @@
 """Run strict pilot artifact check-in validation in one command.
 
 Example:
-python -m scripts.run_pilot_check_in --artifacts-dir artifacts/pilot
+python -m scripts.run_pilot_check_in --artifacts-dir auto --artifacts-root artifacts/pilot
 """
 
 import argparse
@@ -14,8 +14,13 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run strict check-in validation for pilot sweep artifacts")
     parser.add_argument(
         "--artifacts-dir",
+        default="auto",
+        help="artifact directory, or 'auto' to discover latest real artifact bundle",
+    )
+    parser.add_argument(
+        "--artifacts-root",
         default="artifacts/pilot",
-        help="directory containing pilot_ranked_runs.json and stage2 finalists artifacts",
+        help="artifact search root used when --artifacts-dir=auto",
     )
     parser.add_argument(
         "--ranked-json",
@@ -45,9 +50,56 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _is_real_artifacts_dir(
+    artifacts_dir: Path,
+    ranked_json: str,
+    finalists_json: str,
+    finalists_md: str,
+) -> bool:
+    if any("sample" in part for part in artifacts_dir.parts):
+        return False
+    return all((artifacts_dir / name).is_file() for name in (ranked_json, finalists_json, finalists_md))
+
+
+def _resolve_artifacts_dir(
+    artifacts_dir_arg: str,
+    artifacts_root_arg: str,
+    ranked_json: str,
+    finalists_json: str,
+    finalists_md: str,
+) -> Path:
+    if artifacts_dir_arg != "auto":
+        return Path(artifacts_dir_arg)
+
+    artifacts_root = Path(artifacts_root_arg)
+    if not artifacts_root.is_dir():
+        raise RuntimeError(
+            f"artifacts_root does not exist: {artifacts_root}; pass --artifacts-dir explicitly or emit pilot artifacts first"
+        )
+
+    candidates = [
+        path.parent
+        for path in artifacts_root.rglob(ranked_json)
+        if _is_real_artifacts_dir(path.parent, ranked_json, finalists_json, finalists_md)
+    ]
+    if not candidates:
+        raise RuntimeError(
+            f"no real pilot artifact bundle found under {artifacts_root}; run scripts.pilot_sweep on target GPU(s) first"
+        )
+
+    candidates.sort(key=lambda path: (path / ranked_json).stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
 def main() -> None:
     args = _parse_args()
-    artifacts_dir = Path(args.artifacts_dir)
+    artifacts_dir = _resolve_artifacts_dir(
+        args.artifacts_dir,
+        args.artifacts_root,
+        args.ranked_json,
+        args.finalists_json,
+        args.finalists_md,
+    )
     ranked_json = artifacts_dir / args.ranked_json
     finalists_json = artifacts_dir / args.finalists_json
     finalists_md = artifacts_dir / args.finalists_md
