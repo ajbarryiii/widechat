@@ -6,6 +6,7 @@ python -m scripts.run_pilot_check_in --artifacts-dir auto --artifacts-root artif
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -49,6 +50,11 @@ def _parse_args() -> argparse.Namespace:
         "--output-check-md",
         default="",
         help="optional path for markdown check-in evidence summary",
+    )
+    parser.add_argument(
+        "--output-check-command-sh",
+        default="",
+        help="optional path to write the resolved strict check-in command",
     )
     parser.add_argument(
         "--bundle-json",
@@ -151,6 +157,47 @@ def _write_blocked_markdown(
         "",
     ]
     output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _resolved_check_in_command(
+    *,
+    artifacts_dir: Path,
+    ranked_json_name: str,
+    finalists_json_name: str,
+    finalists_md_name: str,
+    output_check_json: str,
+    output_check_md: str,
+    allow_sample_input: bool,
+    bundle_json_path: Path | None,
+) -> str:
+    command = [
+        "python",
+        "-m",
+        "scripts.run_pilot_check_in",
+        "--artifacts-dir",
+        str(artifacts_dir),
+        "--ranked-json",
+        ranked_json_name,
+        "--finalists-json",
+        finalists_json_name,
+        "--finalists-md",
+        finalists_md_name,
+        "--output-check-json",
+        output_check_json,
+    ]
+    if output_check_md:
+        command.extend(["--output-check-md", output_check_md])
+    if allow_sample_input:
+        command.append("--allow-sample-input")
+    if bundle_json_path is not None:
+        command.extend(["--bundle-json", str(bundle_json_path)])
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _write_checker_command(path: str, command: str) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(command + "\n", encoding="utf-8")
 
 
 def _classify_artifacts_dir(
@@ -363,6 +410,19 @@ def main() -> None:
             bundle_json_name=args.bundle_json_name,
             artifacts_dir=artifacts_dir,
         )
+        resolved_command = _resolved_check_in_command(
+            artifacts_dir=artifacts_dir,
+            ranked_json_name=args.ranked_json,
+            finalists_json_name=args.finalists_json,
+            finalists_md_name=args.finalists_md,
+            output_check_json=output_check_json,
+            output_check_md=output_check_md,
+            allow_sample_input=args.allow_sample_input,
+            bundle_json_path=bundle_json_path,
+        )
+
+        if args.output_check_command_sh:
+            _write_checker_command(args.output_check_command_sh, resolved_command)
 
         if args.dry_run:
             print(
@@ -375,6 +435,7 @@ def main() -> None:
                 f"allow_sample_input={args.allow_sample_input}"
                 + (f" check_md={output_check_md}" if output_check_md else "")
                 + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+                + (f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else "")
             )
             return
 
@@ -423,6 +484,7 @@ def main() -> None:
             f"check_json={output_check_json}"
             + (f" check_md={output_check_md}" if output_check_md else "")
             + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+            + (f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else "")
         )
     except RuntimeError:
         if args.output_blocked_md:

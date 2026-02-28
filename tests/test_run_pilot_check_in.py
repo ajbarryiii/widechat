@@ -1,5 +1,6 @@
 import os
 import json
+import shlex
 
 import pytest
 
@@ -188,6 +189,72 @@ def test_main_dry_run_prints_check_md_when_set(tmp_path, monkeypatch, capsys):
 
     stdout = capsys.readouterr().out
     assert f"check_md={check_md}" in stdout
+
+
+def test_main_dry_run_writes_resolved_check_in_command(tmp_path, monkeypatch, capsys):
+    artifacts_dir = tmp_path / "pilot artifacts"
+    command_path = tmp_path / "commands" / "pilot_check_in.sh"
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--dry-run",
+            "--output-check-command-sh",
+            str(command_path),
+        ],
+    )
+
+    runner.main()
+
+    command_text = command_path.read_text(encoding="utf-8").strip()
+    assert "python -m scripts.run_pilot_check_in" in command_text
+    assert f"--artifacts-dir {shlex.quote(str(artifacts_dir))}" in command_text
+    assert "--ranked-json pilot_ranked_runs.json" in command_text
+    assert "--finalists-json stage2_finalists.json" in command_text
+    assert "--finalists-md stage2_finalists.md" in command_text
+    assert f"--output-check-json {shlex.quote(str(artifacts_dir / 'pilot_bundle_check.json'))}" in command_text
+    assert "--dry-run" not in command_text
+
+    stdout = capsys.readouterr().out
+    assert "pilot_check_in_dry_run_ok" in stdout
+    assert f"check_command_sh={command_path}" in stdout
+
+
+def test_main_dry_run_command_includes_allow_sample_and_bundle_json(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "pilot"
+    command_path = tmp_path / "commands" / "pilot_check_in.sh"
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_pilot_check_in.py",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--allow-sample-input",
+            "--bundle-json",
+            "auto",
+            "--dry-run",
+            "--output-check-command-sh",
+            str(command_path),
+        ],
+    )
+
+    runner.main()
+
+    command_text = command_path.read_text(encoding="utf-8")
+    assert "--allow-sample-input" in command_text
+    assert f"--bundle-json {shlex.quote(str(artifacts_dir / 'stage2_promotion_bundle.json'))}" in command_text
 
 
 def test_main_preflight_prints_paths_and_skips_checker(tmp_path, monkeypatch, capsys):
