@@ -83,6 +83,19 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional checker receipt path (defaults to <output-dir>/blackwell_bundle_check.json when --run-bundle-check)",
     )
+    parser.add_argument(
+        "--run-strict-check-in",
+        action="store_true",
+        help="run strict --check-in bundle validation after smoke capture and write a strict checker receipt",
+    )
+    parser.add_argument(
+        "--output-strict-check-json",
+        default="",
+        help=(
+            "optional strict checker receipt path "
+            "(defaults to <output-dir>/blackwell_bundle_check_strict.json when --run-strict-check-in)"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -102,6 +115,7 @@ def _write_runbook_markdown(
     expect_backend: str,
     evidence_md: str,
     check_json_path: str,
+    strict_check_json_path: str,
     require_device_substring: str,
 ) -> None:
     output_path = Path(path)
@@ -110,6 +124,7 @@ def _write_runbook_markdown(
     quoted_expect_backend = shlex.quote(expect_backend)
     quoted_require_device_substring = shlex.quote(require_device_substring)
     quoted_check_json = shlex.quote(check_json_path)
+    quoted_strict_check_json = shlex.quote(strict_check_json_path)
     lines = [
         "# Blackwell Smoke Bundle Runbook",
         "",
@@ -135,6 +150,10 @@ def _write_runbook_markdown(
         f" --bundle-dir {quoted_output_dir} --expect-backend {quoted_expect_backend} --check-in"
         f" --output-check-json {quoted_check_json} --require-device-substring"
         f" {quoted_require_device_substring}`.",
+        "- Optional one-command strict check at smoke time: `python -m scripts.run_blackwell_smoke_bundle"
+        f" --output-dir {quoted_output_dir} --expect-backend {quoted_expect_backend}"
+        f" --require-device-substring {quoted_require_device_substring} --run-strict-check-in"
+        f" --output-strict-check-json {quoted_strict_check_json}`.",
         "- Verify evidence markdown includes device metadata and `status_line_ok: true`.",
         f"- Confirm `{check_json_path}` records `selected_backend: {expect_backend}`.",
         "- Commit the emitted evidence artifacts from this run.",
@@ -201,11 +220,13 @@ def _blocked_payload(
     expect_backend: str,
     require_device_substring: str,
     run_bundle_check: bool,
+    run_strict_check_in: bool,
     artifact_json: str,
     status_line_path: str,
     evidence_md: str,
     runbook_md: str,
     output_check_json: str,
+    output_strict_check_json: str,
     ready: bool,
     error: str,
     status_line: str | None = None,
@@ -226,7 +247,9 @@ def _blocked_payload(
         "evidence_md": evidence_md,
         "runbook_md": runbook_md,
         "run_bundle_check": run_bundle_check,
+        "run_strict_check_in": run_strict_check_in,
         "check_json": output_check_json if run_bundle_check else None,
+        "strict_check_json": output_strict_check_json if run_strict_check_in else None,
     }
     payload.update(_device_metadata())
     nvidia_smi_ok, nvidia_smi_lines, nvidia_smi_error = _query_nvidia_smi_gpus()
@@ -245,6 +268,9 @@ def main() -> None:
     evidence_md = args.output_evidence_md or str(Path(args.output_dir) / "blackwell_smoke_evidence.md")
     runbook_md = args.output_runbook_md or str(Path(args.output_dir) / "blackwell_smoke_runbook.md")
     output_check_json = args.output_check_json or str(Path(args.output_dir) / "blackwell_bundle_check.json")
+    output_strict_check_json = args.output_strict_check_json or str(
+        Path(args.output_dir) / "blackwell_bundle_check_strict.json"
+    )
     output_preflight_json = args.output_preflight_json or str(Path(args.output_dir) / "blackwell_smoke_preflight.json")
     output_blocked_md = args.output_blocked_md or str(Path(args.output_dir) / "blackwell_smoke_blocked.md")
 
@@ -254,11 +280,13 @@ def main() -> None:
         expect_backend=args.expect_backend,
         evidence_md=evidence_md,
         check_json_path=output_check_json,
+        strict_check_json_path=output_strict_check_json,
         require_device_substring=args.require_device_substring,
     )
 
     if args.dry_run:
         dry_run_check_json = output_check_json if args.run_bundle_check else "<none>"
+        dry_run_strict_check_json = output_strict_check_json if args.run_strict_check_in else "<none>"
         print(
             "bundle_dry_run_ok "
             f"expect_backend={args.expect_backend} "
@@ -267,8 +295,10 @@ def main() -> None:
             f"evidence_md={evidence_md} "
             f"runbook_md={runbook_md} "
             f"run_bundle_check={args.run_bundle_check} "
+            f"run_strict_check_in={args.run_strict_check_in} "
             f"require_device_substring={args.require_device_substring or '<none>'} "
-            f"check_json={dry_run_check_json}"
+            f"check_json={dry_run_check_json} "
+            f"strict_check_json={dry_run_strict_check_json}"
         )
         return
 
@@ -291,11 +321,13 @@ def main() -> None:
             expect_backend=args.expect_backend,
             require_device_substring=args.require_device_substring,
             run_bundle_check=args.run_bundle_check,
+            run_strict_check_in=args.run_strict_check_in,
             artifact_json=artifact_json,
             status_line_path=status_line_path,
             evidence_md=evidence_md,
             runbook_md=runbook_md,
             output_check_json=output_check_json,
+            output_strict_check_json=output_strict_check_json,
             ready=preflight_ready,
             error=preflight_error,
         )
@@ -359,6 +391,7 @@ def main() -> None:
         )
 
         checker_receipt_path = "<none>"
+        strict_checker_receipt_path = "<none>"
         if args.run_bundle_check:
             run_bundle_check(
                 bundle_dir=Path(args.output_dir),
@@ -372,6 +405,19 @@ def main() -> None:
             )
             checker_receipt_path = output_check_json
 
+        if args.run_strict_check_in:
+            run_bundle_check(
+                bundle_dir=Path(args.output_dir),
+                expect_backend=args.expect_backend,
+                check_in=True,
+                require_blackwell=True,
+                require_git_tracked=False,
+                require_real_bundle=True,
+                require_device_substring=args.require_device_substring,
+                output_check_json=output_strict_check_json,
+            )
+            strict_checker_receipt_path = output_strict_check_json
+
         print(
             "bundle_ok "
             f"selected={selected_backend} "
@@ -379,7 +425,8 @@ def main() -> None:
             f"status_line={status_line_path} "
             f"evidence_md={evidence_md} "
             f"runbook_md={runbook_md} "
-            f"check_json={checker_receipt_path}"
+            f"check_json={checker_receipt_path} "
+            f"strict_check_json={strict_checker_receipt_path}"
         )
     except RuntimeError as exc:
         blocked_payload = _blocked_payload(
@@ -388,11 +435,13 @@ def main() -> None:
             expect_backend=args.expect_backend,
             require_device_substring=args.require_device_substring,
             run_bundle_check=args.run_bundle_check,
+            run_strict_check_in=args.run_strict_check_in,
             artifact_json=artifact_json,
             status_line_path=status_line_path,
             evidence_md=evidence_md,
             runbook_md=runbook_md,
             output_check_json=output_check_json,
+            output_strict_check_json=output_strict_check_json,
             ready=False,
             error=str(exc),
             status_line=status_line,
