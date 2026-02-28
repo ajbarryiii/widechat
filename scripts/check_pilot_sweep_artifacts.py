@@ -76,8 +76,14 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help=(
             "optional stage2 promotion bundle receipt JSON path from "
-            "scripts.run_stage2_promotion_bundle --output-bundle-json"
+            "scripts.run_stage2_promotion_bundle --output-bundle-json; accepts "
+            "relative filename (with --artifacts-dir) or 'auto'"
         ),
+    )
+    parser.add_argument(
+        "--bundle-json-name",
+        default="stage2_promotion_bundle.json",
+        help="bundle receipt filename to use when --bundle-json=auto",
     )
     parser.add_argument(
         "--dry-run",
@@ -539,6 +545,27 @@ def run_pilot_bundle_check(
     return len(expected_finalists)
 
 
+def _resolve_bundle_json_path(
+    *,
+    bundle_json_arg: str,
+    bundle_json_name: str,
+    artifacts_dir_arg: str,
+    ranked_json_path: Path,
+) -> Path | None:
+    if not bundle_json_arg:
+        return None
+
+    if bundle_json_arg == "auto":
+        if not artifacts_dir_arg:
+            raise RuntimeError("--bundle-json auto requires --artifacts-dir or --artifacts-dir auto")
+        return ranked_json_path.parent / bundle_json_name
+
+    bundle_json = Path(bundle_json_arg)
+    if artifacts_dir_arg and not bundle_json.is_absolute():
+        return ranked_json_path.parent / bundle_json
+    return bundle_json
+
+
 def main() -> None:
     args = _parse_args()
     ranked_json_path, finalists_json_path, finalists_md_path = _resolve_artifact_paths(
@@ -548,13 +575,12 @@ def main() -> None:
         finalists_json_arg=args.finalists_json,
         finalists_md_arg=args.finalists_md,
     )
-    bundle_json_path: Path | None = None
-    if args.bundle_json:
-        bundle_json = Path(args.bundle_json)
-        if args.artifacts_dir and not bundle_json.is_absolute():
-            bundle_json_path = ranked_json_path.parent / bundle_json
-        else:
-            bundle_json_path = bundle_json
+    bundle_json_path = _resolve_bundle_json_path(
+        bundle_json_arg=args.bundle_json,
+        bundle_json_name=args.bundle_json_name,
+        artifacts_dir_arg=args.artifacts_dir,
+        ranked_json_path=ranked_json_path,
+    )
 
     if args.dry_run:
         dry_run_status = (

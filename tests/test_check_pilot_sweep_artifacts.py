@@ -177,6 +177,90 @@ def test_main_accepts_valid_bundle_receipt(tmp_path, monkeypatch, capsys):
     assert f"bundle_json={bundle_json}" in stdout
 
 
+def test_main_bundle_json_auto_resolves_default_name_from_artifacts_dir(tmp_path, monkeypatch, capsys):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    ranked_payload = json.loads(ranked_json.read_text(encoding="utf-8"))
+    bundle_json = tmp_path / "stage2_promotion_bundle.json"
+    _write_bundle_receipt(
+        path=bundle_json,
+        ranked_json=ranked_json,
+        finalists_json=finalists_json,
+        finalists_md=finalists_md,
+        finalists_count=2,
+        source_sha256=pilot_promote._stable_json_sha256(ranked_payload),
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--bundle-json",
+            "auto",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert "pilot_bundle_check_ok finalists=2" in stdout
+    assert f"bundle_json={bundle_json}" in stdout
+
+
+def test_main_bundle_json_auto_requires_artifacts_dir(tmp_path, monkeypatch):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--ranked-json",
+            str(ranked_json),
+            "--finalists-json",
+            str(finalists_json),
+            "--finalists-md",
+            str(finalists_md),
+            "--bundle-json",
+            "auto",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="--bundle-json auto requires --artifacts-dir"):
+        checker.main()
+
+
+def test_main_bundle_json_auto_uses_custom_name(tmp_path, monkeypatch, capsys):
+    ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
+    ranked_payload = json.loads(ranked_json.read_text(encoding="utf-8"))
+    bundle_json = tmp_path / "receipts" / "promotion_receipt.json"
+    _write_bundle_receipt(
+        path=bundle_json,
+        ranked_json=ranked_json,
+        finalists_json=finalists_json,
+        finalists_md=finalists_md,
+        finalists_count=2,
+        source_sha256=pilot_promote._stable_json_sha256(ranked_payload),
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--bundle-json",
+            "auto",
+            "--bundle-json-name",
+            "receipts/promotion_receipt.json",
+        ],
+    )
+
+    checker.main()
+    stdout = capsys.readouterr().out
+    assert "pilot_bundle_check_ok finalists=2" in stdout
+    assert f"bundle_json={bundle_json}" in stdout
+
+
 def test_main_rejects_bundle_receipt_sha_mismatch(tmp_path, monkeypatch):
     ranked_json, finalists_json, finalists_md = _write_artifacts(tmp_path)
     ranked_payload = json.loads(ranked_json.read_text(encoding="utf-8"))
