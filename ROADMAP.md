@@ -175,6 +175,7 @@ Examples:
 - [ ] Run each config for a short pilot budget (recommended: 250M tokens each).
    - [x] Add pilot sweep automation script (`scripts/pilot_sweep.py`) that runs the full config grid with fixed pilot token budget and eval cadence.
    - [x] Add pilot reporting output (`--output-md`) that writes a ranking table plus selected finalists for Stage 2 promotion decisions.
+   - [x] Add per-config artifact capture (`--artifacts-dir`) so each pilot run saves raw logs and per-config metrics JSON for later audit/ranking.
    - [ ] Execute the full pilot sweep on target GPU(s) and collect per-config logs/artifacts.
 - [x] Keep eval cheap and frequent enough to rank trends (e.g. val bpb every 50-100 steps).
 - [x] Apply ranking rule.

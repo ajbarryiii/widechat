@@ -6,6 +6,7 @@ python -m scripts.pilot_sweep --device-type cuda --total-batch-size 524288 --dev
 
 import argparse
 import json
+import os
 import shlex
 import sys
 
@@ -33,16 +34,51 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--python-exe", type=str, default=sys.executable)
     parser.add_argument("--output-json", type=str, default="", help="optional path to write machine-readable results")
     parser.add_argument("--output-md", type=str, default="", help="optional path to write markdown ranking table + finalists")
+    parser.add_argument(
+        "--artifacts-dir",
+        type=str,
+        default="",
+        help="optional directory for per-config logs/metrics artifacts",
+    )
     parser.add_argument("--extra-arg", action="append", default=[], help="forward extra arg to each base_train run")
     parser.add_argument("--dry-run", action="store_true", help="print commands only")
     return parser.parse_args()
+
+
+def _sanitize_label(label: str) -> str:
+    safe = []
+    for ch in label:
+        if ch.isalnum() or ch in {"-", "_"}:
+            safe.append(ch)
+        else:
+            safe.append("-")
+    slug = "".join(safe).strip("-")
+    return slug or "run"
+
+
+def _write_run_artifacts(
+    artifacts_dir: str,
+    run_index: int,
+    run_result: dict[str, int | float | bool | str | None],
+    output_text: str,
+) -> None:
+    prefix = f"{run_index:02d}-{_sanitize_label(str(run_result['config']))}"
+    os.makedirs(artifacts_dir, exist_ok=True)
+
+    log_path = os.path.join(artifacts_dir, f"{prefix}.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(output_text)
+
+    metrics_path = os.path.join(artifacts_dir, f"{prefix}.json")
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump(run_result, f, indent=2)
 
 
 def main() -> None:
     args = _parse_args()
     runs = []
 
-    for target in DEFAULT_PILOT_TARGETS:
+    for index, target in enumerate(DEFAULT_PILOT_TARGETS, start=1):
         command, num_iterations = build_pilot_command(
             target=target,
             python_exe=args.python_exe,
@@ -69,10 +105,19 @@ def main() -> None:
             print(shlex.join(command))
             continue
 
-        _, metrics = run_single_pilot(command)
+        output, metrics = run_single_pilot(command)
         run_result.update(metrics)
         if metrics.get("command_failed"):
             print(f"warning: pilot run {target.label} exited non-zero and was marked unstable")
+
+        if args.artifacts_dir:
+            _write_run_artifacts(
+                artifacts_dir=args.artifacts_dir,
+                run_index=index,
+                run_result=run_result,
+                output_text=output,
+            )
+
         runs.append(run_result)
 
     if args.dry_run:

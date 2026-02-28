@@ -1,7 +1,9 @@
+import json
 import pytest
 from types import SimpleNamespace
 
 from nanochat import pilot_sweep
+from scripts.pilot_sweep import _sanitize_label, _write_run_artifacts
 from nanochat.pilot_sweep import (
     MAX_RECOMMENDED_EVAL_EVERY,
     MIN_RECOMMENDED_EVAL_EVERY,
@@ -336,3 +338,27 @@ def test_format_finalists_summary_reports_selected_configs():
     assert "Selected finalists:" in summary
     assert "- 12x1: rank=1, tok/sec=1,000 (+0.0% vs 12x1), min_val_bpb=4.1000" in summary
     assert "- 6x2: rank=2, tok/sec=980 (-2.0% vs 12x1), min_val_bpb=4.0000" in summary
+
+
+def test_sanitize_label_replaces_unsafe_chars():
+    assert _sanitize_label("2x5/gpu run") == "2x5-gpu-run"
+    assert _sanitize_label("!!!") == "run"
+
+
+def test_write_run_artifacts_writes_log_and_json(tmp_path):
+    run_result = {
+        "config": "2x5",
+        "selected_tok_per_sec": 1234,
+        "unstable": False,
+    }
+    _write_run_artifacts(
+        artifacts_dir=str(tmp_path),
+        run_index=3,
+        run_result=run_result,
+        output_text="training output",
+    )
+
+    log_path = tmp_path / "03-2x5.log"
+    json_path = tmp_path / "03-2x5.json"
+    assert log_path.read_text(encoding="utf-8") == "training output"
+    assert json.loads(json_path.read_text(encoding="utf-8")) == run_result
