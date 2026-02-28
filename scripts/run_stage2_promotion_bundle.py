@@ -5,8 +5,10 @@ python -m scripts.run_stage2_promotion_bundle --input-json artifacts/pilot/sampl
 """
 
 import argparse
+import hashlib
 import json
 import shlex
+import sys
 from pathlib import Path
 
 from nanochat.pilot_sweep import format_finalists_summary, select_finalists
@@ -72,6 +74,11 @@ def _parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="only resolve inputs/outputs and print planned bundle execution",
+    )
+    parser.add_argument(
+        "--output-bundle-json",
+        default="",
+        help="optional path to write machine-readable promotion-bundle receipt JSON",
     )
     return parser.parse_args()
 
@@ -261,11 +268,49 @@ def _write_runbook_md(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_bundle_receipt(
+    *,
+    path: Path,
+    input_json: Path,
+    finalists_json: Path,
+    finalists_md: Path,
+    finalists_count: int,
+    source_sha256: str,
+    run_check_in: bool,
+    check_json_path: Path | None,
+) -> None:
+    def _sha256(path_obj: Path) -> str:
+        return hashlib.sha256(path_obj.read_bytes()).hexdigest()
+
+    artifact_sha256 = {
+        "finalists_json": _sha256(finalists_json),
+        "finalists_md": _sha256(finalists_md),
+    }
+    if check_json_path is not None and check_json_path.is_file():
+        artifact_sha256["check_json"] = _sha256(check_json_path)
+
+    payload = {
+        "status": "ok",
+        "command": [*sys.argv],
+        "input_json": str(input_json),
+        "source_sha256": source_sha256,
+        "finalists_json": str(finalists_json),
+        "finalists_md": str(finalists_md),
+        "finalists_count": finalists_count,
+        "run_check_in": run_check_in,
+        "check_json": str(check_json_path) if check_json_path is not None else None,
+        "artifact_sha256": artifact_sha256,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
     runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
+    bundle_json_path = Path(args.output_bundle_json) if args.output_bundle_json else None
     check_json_path: Path | None = None
     if args.run_check_in:
         check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
@@ -280,6 +325,7 @@ def main() -> None:
             f"require_real_input={args.require_real_input}"
             + (f" check_json={check_json_path}" if check_json_path is not None else "")
             + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
+            + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
         )
         return
 
@@ -342,6 +388,18 @@ def main() -> None:
             output_check_json=str(check_json_path) if check_json_path is not None else args.output_check_json,
         )
 
+    if bundle_json_path is not None:
+        _write_bundle_receipt(
+            path=bundle_json_path,
+            input_json=input_json,
+            finalists_json=finalists_json,
+            finalists_md=finalists_md,
+            finalists_count=len(finalists),
+            source_sha256=source_sha256,
+            run_check_in=args.run_check_in,
+            check_json_path=check_json_path,
+        )
+
     print(
         "bundle_ok "
         f"input_json={input_json} "
@@ -350,6 +408,7 @@ def main() -> None:
         f"md={finalists_md}"
         + (f" check_json={check_json_path}" if check_json_path is not None else "")
         + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
+        + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
     )
 
 

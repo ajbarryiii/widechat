@@ -1,6 +1,7 @@
 import json
 import os
 import shlex
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -359,6 +360,7 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
     input_json = tmp_path / "ranked_runs.json"
     output_dir = tmp_path / "artifacts"
     output_check_json = tmp_path / "receipts" / "stage2_check.json"
+    output_bundle_json = tmp_path / "receipts" / "stage2_bundle.json"
     ranked_runs = {
         "ranked_runs": [
             {
@@ -393,6 +395,8 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
 
     def _fake_run_pilot_bundle_check(**kwargs):
         check_call.update(kwargs)
+        Path(kwargs["output_check_json"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(kwargs["output_check_json"]).write_text('{"status":"ok"}\n', encoding="utf-8")
         return 2
 
     monkeypatch.setattr(bundle, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
@@ -411,6 +415,8 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
             "--run-check-in",
             "--output-check-json",
             str(output_check_json),
+            "--output-bundle-json",
+            str(output_bundle_json),
         ],
     )
 
@@ -422,8 +428,27 @@ def test_main_runs_strict_check_in_when_requested(tmp_path, monkeypatch, capsys)
     assert check_call["check_in"] is True
     assert check_call["output_check_json"] == str(output_check_json)
 
+    bundle_payload = json.loads(output_bundle_json.read_text(encoding="utf-8"))
+    assert bundle_payload["status"] == "ok"
+    assert bundle_payload["input_json"] == str(input_json)
+    assert bundle_payload["finalists_json"] == str(output_dir / "stage2_finalists.json")
+    assert bundle_payload["finalists_md"] == str(output_dir / "stage2_finalists.md")
+    assert bundle_payload["finalists_count"] == 2
+    assert bundle_payload["run_check_in"] is True
+    assert bundle_payload["check_json"] == str(output_check_json)
+    assert bundle_payload["artifact_sha256"]["finalists_json"] == hashlib.sha256(
+        (output_dir / "stage2_finalists.json").read_bytes()
+    ).hexdigest()
+    assert bundle_payload["artifact_sha256"]["finalists_md"] == hashlib.sha256(
+        (output_dir / "stage2_finalists.md").read_bytes()
+    ).hexdigest()
+    assert bundle_payload["artifact_sha256"]["check_json"] == hashlib.sha256(
+        output_check_json.read_bytes()
+    ).hexdigest()
+
     stdout = capsys.readouterr().out
     assert f"check_json={output_check_json}" in stdout
+    assert f"bundle_json={output_bundle_json}" in stdout
 
 
 def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, monkeypatch, capsys):
@@ -431,6 +456,7 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     output_dir = tmp_path / "artifacts"
     runbook_md = tmp_path / "docs" / "stage2_runbook.md"
     output_check_json = tmp_path / "receipts" / "stage2_check.json"
+    output_bundle_json = tmp_path / "receipts" / "stage2_bundle.json"
     input_json.write_text("{}", encoding="utf-8")
 
     check_called = False
@@ -454,6 +480,8 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
             str(output_check_json),
             "--output-runbook-md",
             str(runbook_md),
+            "--output-bundle-json",
+            str(output_bundle_json),
             "--require-real-input",
             "--dry-run",
         ],
@@ -465,6 +493,7 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     assert not (output_dir / "stage2_finalists.json").exists()
     assert not (output_dir / "stage2_finalists.md").exists()
     assert not runbook_md.exists()
+    assert not output_bundle_json.exists()
 
     stdout = capsys.readouterr().out
     assert "stage2_promotion_bundle_dry_run_ok" in stdout
@@ -475,6 +504,7 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     assert "require_real_input=True" in stdout
     assert f"check_json={output_check_json}" in stdout
     assert f"runbook_md={runbook_md}" in stdout
+    assert f"bundle_json={output_bundle_json}" in stdout
 
 
 def test_runbook_includes_check_in_flags_when_enabled(tmp_path):

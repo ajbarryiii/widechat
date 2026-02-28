@@ -261,6 +261,8 @@ Examples:
               - [x] Add promotion-bundle preflight dry-run mode (`--dry-run`) so operators can resolve/record canonical ranked-input, finalists-output, optional check-receipt, and runbook paths before executing real target-GPU promotion/check-in runs.
               - [x] Harden promotion-bundle auto-discovery candidate filtering to reject payload-marked sample JSON and malformed ranked artifacts with explicit rejection diagnostics, so operators can safely resolve real ranked outputs before promotion.
               - [ ] Execute promotion bundle runner on real pilot output JSON and check in emitted Stage 2 finalist artifacts.
+                - [x] Add machine-readable promotion-bundle receipt output (`--output-bundle-json`) in `scripts.run_stage2_promotion_bundle` so real execution/check-in reviews can capture a canonical invocation summary plus SHA256 digests for emitted finalists artifacts.
+                - [ ] Run promotion bundle runner on real pilot output JSON with `--output-bundle-json` and check in emitted finalists + receipt artifacts.
 - [ ] Run 1-2B token training for these only.
 - [ ] Compare convergence and final quality against baseline.
 
