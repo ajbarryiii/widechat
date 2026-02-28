@@ -665,6 +665,34 @@ def test_main_auto_discovery_lists_rejected_candidates(tmp_path, monkeypatch):
     )
 
 
+def test_main_auto_discovery_lists_runbook_only_candidate(tmp_path, monkeypatch):
+    artifacts_root = tmp_path / "artifacts" / "pilot"
+    runbook_only = artifacts_root / "runbook_only"
+    runbook_only.mkdir(parents=True, exist_ok=True)
+    (runbook_only / "pilot_sweep_runbook.md").write_text("# Pilot Sweep Runbook\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_pilot_sweep_artifacts.py",
+            "--artifacts-dir",
+            "auto",
+            "--artifacts-root",
+            str(artifacts_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        checker.main()
+
+    message = str(exc_info.value)
+    assert "rejected 1 candidate bundle(s)" in message
+    assert (
+        f"{runbook_only}: missing files: pilot_ranked_runs.json, stage2_finalists.json, stage2_finalists.md"
+        in message
+    )
+
+
 def test_main_requires_explicit_paths_without_artifacts_dir(tmp_path, monkeypatch):
     ranked_json, finalists_json, _finalists_md = _write_artifacts(tmp_path)
 

@@ -167,10 +167,15 @@ def _resolve_artifacts_dir(
             f"artifacts_root does not exist: {artifacts_root}; pass --artifacts-dir explicitly or emit pilot artifacts first"
         )
 
-    discovered_dirs = sorted({path.parent for path in artifacts_root.rglob(ranked_json)})
+    discovered_dirs = {
+        path.parent
+        for path in artifacts_root.rglob(ranked_json)
+    }
+    discovered_dirs.update(path.parent for path in artifacts_root.rglob("*runbook*.md"))
+
     candidates = []
     rejected_dirs = []
-    for discovered_dir in discovered_dirs:
+    for discovered_dir in sorted(discovered_dirs):
         classification = _classify_artifacts_dir(
             discovered_dir,
             ranked_json,
