@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 from pathlib import Path
 
 import pytest
@@ -194,6 +195,68 @@ def test_main_dry_run_includes_markdown_output_path(tmp_path, monkeypatch, capsy
     stdout = capsys.readouterr().out
     assert "blackwell_check_in_dry_run_ok" in stdout
     assert f"check_md={check_md}" in stdout
+
+
+def test_main_dry_run_writes_resolved_checker_command(tmp_path, monkeypatch, capsys):
+    bundle_dir = tmp_path / "blackwell bundle"
+    command_path = tmp_path / "commands" / "strict_check.sh"
+
+    def _fake_run_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--dry-run",
+            "--output-check-command-sh",
+            str(command_path),
+        ],
+    )
+
+    runner.main()
+
+    command_text = command_path.read_text(encoding="utf-8").strip()
+    assert "python -m scripts.check_blackwell_evidence_bundle" in command_text
+    assert f"--bundle-dir {shlex.quote(str(bundle_dir))}" in command_text
+    assert "--check-in" in command_text
+    assert f"--output-check-json {shlex.quote(str(bundle_dir / 'blackwell_bundle_check.json'))}" in command_text
+    assert "--require-real-bundle" in command_text
+    assert "--require-device-substring 'RTX 5090'" in command_text
+
+    stdout = capsys.readouterr().out
+    assert "blackwell_check_in_dry_run_ok" in stdout
+    assert f"check_command_sh={command_path}" in stdout
+
+
+def test_main_command_file_omits_require_real_bundle_for_sample_override(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    command_path = tmp_path / "commands" / "strict_check.sh"
+
+    def _fake_run_bundle_check(**kwargs):
+        raise AssertionError("checker should not run in dry-run mode")
+
+    monkeypatch.setattr(runner, "run_bundle_check", _fake_run_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--allow-sample-bundle",
+            "--dry-run",
+            "--output-check-command-sh",
+            str(command_path),
+        ],
+    )
+
+    runner.main()
+
+    command_text = command_path.read_text(encoding="utf-8")
+    assert "--require-real-bundle" not in command_text
 
 
 def test_main_preflight_runs_preflight_and_skips_checker(tmp_path, monkeypatch, capsys):

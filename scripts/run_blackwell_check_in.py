@@ -6,6 +6,7 @@ python -m scripts.run_blackwell_check_in --bundle-dir artifacts/blackwell_smoke
 
 import argparse
 import json
+import shlex
 from pathlib import Path
 
 from scripts.check_blackwell_evidence_bundle import _resolve_bundle_dir as _resolve_bundle_dir_from_checker
@@ -40,6 +41,11 @@ def _parse_args() -> argparse.Namespace:
         "--output-check-md",
         default="",
         help="optional path for markdown check-in evidence summary",
+    )
+    parser.add_argument(
+        "--output-check-command-sh",
+        default="",
+        help="optional path to write the resolved strict checker command",
     )
     parser.add_argument(
         "--allow-sample-bundle",
@@ -119,6 +125,39 @@ def _write_preflight_receipt(
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _resolved_checker_command(
+    *,
+    bundle_dir: Path,
+    expect_backend: str,
+    output_check_json: str,
+    require_device_substring: str,
+    allow_sample_bundle: bool,
+) -> str:
+    command = [
+        "python",
+        "-m",
+        "scripts.check_blackwell_evidence_bundle",
+        "--bundle-dir",
+        str(bundle_dir),
+        "--expect-backend",
+        expect_backend,
+        "--check-in",
+        "--output-check-json",
+        output_check_json,
+    ]
+    if require_device_substring:
+        command.extend(["--require-device-substring", require_device_substring])
+    if not allow_sample_bundle:
+        command.append("--require-real-bundle")
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _write_checker_command(path: str, command: str) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(command + "\n", encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     if args.preflight and args.dry_run:
@@ -150,6 +189,16 @@ def main() -> None:
     assert bundle_dir is not None
     output_check_json = output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
     output_check_md = args.output_check_md
+    resolved_command = _resolved_checker_command(
+        bundle_dir=bundle_dir,
+        expect_backend=args.expect_backend,
+        output_check_json=output_check_json,
+        require_device_substring=args.require_device_substring,
+        allow_sample_bundle=args.allow_sample_bundle,
+    )
+
+    if args.output_check_command_sh:
+        _write_checker_command(args.output_check_command_sh, resolved_command)
 
     if args.preflight:
         preflight_ok = True
@@ -188,12 +237,16 @@ def main() -> None:
 
     if args.dry_run:
         check_md_suffix = f" check_md={output_check_md}" if output_check_md else ""
+        check_command_suffix = (
+            f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else ""
+        )
         print(
             "blackwell_check_in_dry_run_ok "
             f"bundle_dir={bundle_dir} "
             f"expect_backend={args.expect_backend} "
             f"check_json={output_check_json} "
             f"{check_md_suffix} "
+            f"{check_command_suffix} "
             f"require_device_substring={args.require_device_substring or '<none>'} "
             f"allow_sample_bundle={args.allow_sample_bundle}"
         )
@@ -227,6 +280,7 @@ def main() -> None:
         f"bundle_dir={bundle_dir} "
         f"check_json={output_check_json}"
         + (f" check_md={output_check_md}" if output_check_md else "")
+        + (f" check_command_sh={args.output_check_command_sh}" if args.output_check_command_sh else "")
     )
 
 
