@@ -19,7 +19,14 @@ import pytest
 import sys
 from types import SimpleNamespace
 import nanochat.flash_attention as fa_module
-from nanochat.flash_attention import flash_attn, HAS_FA4, HAS_FA3, HAS_FLASH_ATTN, backend_status_message
+from nanochat.flash_attention import (
+    HAS_FA3,
+    HAS_FA4,
+    HAS_FLASH_ATTN,
+    backend_diagnostics,
+    backend_status_message,
+    flash_attn,
+)
 from nanochat.engine import KVCache
 
 
@@ -382,6 +389,17 @@ class TestOverrideMechanism:
         msg = backend_status_message()
         assert f"selected={expected}" in msg
         assert "mode=auto" in msg
+        assert "fa4_probe=" in msg
+        assert "fa3_probe=" in msg
+
+    def test_backend_diagnostics_contains_probe_fields(self):
+        diagnostics = backend_diagnostics()
+        assert diagnostics["selected_backend"] in {"fa4", "fa3", "sdpa"}
+        assert diagnostics["mode"] in {"auto", "fa4", "fa3", "sdpa"}
+        assert isinstance(diagnostics["has_fa4"], bool)
+        assert isinstance(diagnostics["has_fa3"], bool)
+        assert isinstance(diagnostics["fa4_probe"], str)
+        assert isinstance(diagnostics["fa3_probe"], str)
 
     def test_backend_status_message_sdpa_override_is_explicit(self):
         set_impl('sdpa')
@@ -439,6 +457,7 @@ class TestBlackwellSelection:
 
         interface = fa_module._load_flash_attention_4()
         assert interface is None
+        assert fa_module._fa4_probe == "load_error:RuntimeError"
 
         monkeypatch.setattr(fa_module, "HAS_FA4", False)
         monkeypatch.setattr(fa_module, "HAS_FA3", False)

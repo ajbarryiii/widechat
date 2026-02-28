@@ -30,37 +30,59 @@ def _resolve_kernel_interface(kernel):
     return None
 
 
+_fa4_probe = "not_attempted"
+_fa3_probe = "not_attempted"
+
+
 def _load_flash_attention_4():
     """Try to load Flash Attention 4 (Blackwell+ GPUs, sm100+)."""
+    global _fa4_probe
     if not torch.cuda.is_available():
+        _fa4_probe = "cuda_unavailable"
         return None
     try:
-        major, _ = torch.cuda.get_device_capability()
+        major, minor = torch.cuda.get_device_capability()
         if major < 10:
+            _fa4_probe = f"unsupported_cc_sm{major}{minor}"
             return None
         import os
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
         from kernels import get_kernel
         kernel = get_kernel('varunneal/flash-attention-4')
-        return _resolve_kernel_interface(kernel)
-    except Exception:
+        interface = _resolve_kernel_interface(kernel)
+        if interface is None:
+            _fa4_probe = "invalid_kernel_interface"
+            return None
+        _fa4_probe = "available"
+        return interface
+    except Exception as exc:
+        _fa4_probe = f"load_error:{type(exc).__name__}"
         return None
 
 
 def _load_flash_attention_3():
     """Try to load Flash Attention 3 (Hopper GPU, sm90)."""
+    global _fa3_probe
     if not torch.cuda.is_available():
+        _fa3_probe = "cuda_unavailable"
         return None
     try:
-        major, _ = torch.cuda.get_device_capability()
+        major, minor = torch.cuda.get_device_capability()
         if major != 9:
+            _fa3_probe = f"unsupported_cc_sm{major}{minor}"
             return None
         import os
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
         from kernels import get_kernel
         kernel = get_kernel('varunneal/flash-attention-3')
-        return _resolve_kernel_interface(kernel)
-    except Exception:
+        interface = _resolve_kernel_interface(kernel)
+        if interface is None:
+            _fa3_probe = "invalid_kernel_interface"
+            return None
+        _fa3_probe = "available"
+        return interface
+    except Exception as exc:
+        _fa3_probe = f"load_error:{type(exc).__name__}"
         return None
 
 
@@ -92,20 +114,36 @@ def _backend_name():
     return 'sdpa'
 
 
-def backend_status_message():
-    """Return an explicit one-line backend status message for logs."""
+def backend_diagnostics():
+    """Structured backend selection diagnostics for logs/artifacts."""
     backend_name = _backend_name()
-    override = _override_impl if _override_impl is not None else "auto"
+    mode = _override_impl if _override_impl is not None else "auto"
     if torch.cuda.is_available():
         major, minor = torch.cuda.get_device_capability()
         capability = f"{major}.{minor}"
     else:
         capability = "n/a"
+    return {
+        "selected_backend": backend_name,
+        "mode": mode,
+        "has_fa4": HAS_FA4,
+        "has_fa3": HAS_FA3,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_cc": capability,
+        "fa4_probe": _fa4_probe,
+        "fa3_probe": _fa3_probe,
+    }
+
+
+def backend_status_message():
+    """Return an explicit one-line backend status message for logs."""
+    diagnostics = backend_diagnostics()
     return (
         "Flash Attention backend selection: "
-        f"selected={backend_name}, mode={override}, has_fa4={HAS_FA4}, "
-        f"has_fa3={HAS_FA3}, cuda_available={torch.cuda.is_available()}, "
-        f"cuda_cc={capability}"
+        f"selected={diagnostics['selected_backend']}, mode={diagnostics['mode']}, "
+        f"has_fa4={diagnostics['has_fa4']}, has_fa3={diagnostics['has_fa3']}, "
+        f"cuda_available={diagnostics['cuda_available']}, cuda_cc={diagnostics['cuda_cc']}, "
+        f"fa4_probe={diagnostics['fa4_probe']}, fa3_probe={diagnostics['fa3_probe']}"
     )
 
 

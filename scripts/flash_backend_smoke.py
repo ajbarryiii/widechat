@@ -16,7 +16,7 @@ from pathlib import Path
 
 import torch
 
-from nanochat.flash_attention import backend_status_message
+from nanochat.flash_attention import backend_diagnostics, backend_status_message
 
 
 def _parse_args() -> argparse.Namespace:
@@ -120,14 +120,20 @@ def _git_commit() -> str | None:
     return commit
 
 
-def _write_smoke_artifact(path: str, status_line: str, selected_backend: str) -> None:
+def _write_smoke_artifact(path: str, status_line: str, selected_backend: str, diagnostics: dict | None = None) -> None:
     metadata = _device_metadata()
+    diagnostics = diagnostics or {}
     payload = {
         "status_line": status_line,
         "selected_backend": selected_backend,
         "is_sample": False,
         "generated_at_utc": _generated_at_utc(),
         "git_commit": _git_commit(),
+        "selection_mode": diagnostics.get("mode"),
+        "has_fa4": diagnostics.get("has_fa4"),
+        "has_fa3": diagnostics.get("has_fa3"),
+        "fa4_probe": diagnostics.get("fa4_probe"),
+        "fa3_probe": diagnostics.get("fa3_probe"),
         **metadata,
     }
     output_path = Path(path)
@@ -155,13 +161,14 @@ def main() -> None:
     _validate_environment(args.require_cuda, args.require_blackwell)
     output_json, output_status_line = _resolve_output_paths(args.output_json, args.output_status_line, args.output_dir)
 
+    diagnostics = backend_diagnostics()
     status = backend_status_message()
     print(status)
     selected = _extract_selected_backend(status)
     if args.expect_backend and selected != args.expect_backend:
         raise RuntimeError(f"expected backend {args.expect_backend}, got {selected}")
     if output_json:
-        _write_smoke_artifact(output_json, status, selected)
+        _write_smoke_artifact(output_json, status, selected, diagnostics=diagnostics)
     if output_status_line:
         _write_status_line(output_status_line, status)
 

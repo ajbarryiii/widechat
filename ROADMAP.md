@@ -135,6 +135,7 @@ Examples:
 ### F) `nanochat/flash_attention.py` (Blackwell prerequisite)
 - [x] Migrate runtime backend from Flash Attention 3-first to Flash Attention 4-first.
 - [ ] Target NVIDIA Blackwell (RTX 5090) as primary path, with SDPA fallback retained.
+  - [x] Add backend probe diagnostics (`fa4_probe`/`fa3_probe`) to backend status logs and smoke artifacts so Blackwell fallback root cause is auditable from checked-in evidence.
   - [x] Add automated Blackwell load-failure fallback coverage (sm100 + FA4 load failure => SDPA fallback).
   - [x] Add reproducible backend smoke command (`python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell`) so on-device validation emits a canonical `selected=...` log line.
   - [x] Add machine-readable smoke artifact output (`--output-json`) so one-device validation can persist canonical backend-selection evidence alongside logs.

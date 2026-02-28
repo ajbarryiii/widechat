@@ -76,7 +76,14 @@ def test_validate_environment_accepts_sm100(monkeypatch):
 def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     output = tmp_path / "artifacts" / "flash_backend.json"
     status = "Flash Attention backend selection: selected=fa4, mode=auto"
-    _write_smoke_artifact(str(output), status, "fa4")
+    diagnostics = {
+        "mode": "auto",
+        "has_fa4": True,
+        "has_fa3": False,
+        "fa4_probe": "available",
+        "fa3_probe": "unsupported_cc_sm100",
+    }
+    _write_smoke_artifact(str(output), status, "fa4", diagnostics=diagnostics)
 
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["selected_backend"] == "fa4"
@@ -85,6 +92,11 @@ def test_write_smoke_artifact_writes_expected_payload(tmp_path):
     assert isinstance(payload["cuda_available"], bool)
     assert "device_name" in payload
     assert "cuda_capability" in payload
+    assert payload["selection_mode"] == "auto"
+    assert payload["has_fa4"] is True
+    assert payload["has_fa3"] is False
+    assert payload["fa4_probe"] == "available"
+    assert payload["fa3_probe"] == "unsupported_cc_sm100"
     assert payload["generated_at_utc"].endswith("Z")
     datetime.strptime(payload["generated_at_utc"], "%Y-%m-%dT%H:%M:%SZ")
     assert "git_commit" in payload
@@ -138,7 +150,15 @@ def test_resolve_output_paths_rejects_mixed_output_flags():
 def test_main_output_dir_writes_both_artifacts(tmp_path, monkeypatch):
     output_dir = tmp_path / "smoke"
     status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    diagnostics = {
+        "mode": "auto",
+        "has_fa4": True,
+        "has_fa3": False,
+        "fa4_probe": "available",
+        "fa3_probe": "unsupported_cc_sm100",
+    }
     monkeypatch.setattr(flash_backend_smoke, "backend_status_message", lambda: status)
+    monkeypatch.setattr(flash_backend_smoke, "backend_diagnostics", lambda: diagnostics)
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -159,6 +179,8 @@ def test_main_output_dir_writes_both_artifacts(tmp_path, monkeypatch):
     payload = json.loads(artifact_json.read_text(encoding="utf-8"))
     assert payload["status_line"] == status
     assert payload["selected_backend"] == "fa4"
+    assert payload["selection_mode"] == "auto"
+    assert payload["fa4_probe"] == "available"
     assert payload["generated_at_utc"].endswith("Z")
     assert "git_commit" in payload
     assert artifact_status.read_text(encoding="utf-8") == f"{status}\n"
