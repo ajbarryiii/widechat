@@ -105,6 +105,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional path to write blocker diagnostics markdown when bundle execution fails",
     )
+    parser.add_argument(
+        "--output-bundle-command-sh",
+        default="",
+        help="optional path to write the resolved promotion-bundle command",
+    )
     return parser.parse_args()
 
 
@@ -324,6 +329,7 @@ def _write_blocked_md(
     bundle_json_path: Path | None,
     evidence_md_path: Path | None,
     preflight_json_path: Path | None,
+    bundle_command_path: Path | None,
 ) -> None:
     input_json_value = str(resolved_input_json) if resolved_input_json is not None else input_json_arg
     lines = [
@@ -344,6 +350,11 @@ def _write_blocked_md(
             f"- preflight_json: `{preflight_json_path}`"
             if preflight_json_path is not None
             else "- preflight_json: (not configured)"
+        ),
+        (
+            f"- bundle_command_sh: `{bundle_command_path}`"
+            if bundle_command_path is not None
+            else "- bundle_command_sh: (not configured)"
         ),
         "",
         "## Command",
@@ -443,6 +454,7 @@ def _write_preflight_receipt(
     runbook_md: Path | None,
     bundle_json_path: Path | None,
     evidence_md_path: Path | None,
+    bundle_command_path: Path | None,
 ) -> None:
     payload = {
         "status": "ok",
@@ -460,9 +472,68 @@ def _write_preflight_receipt(
         "runbook_md": str(runbook_md) if runbook_md is not None else None,
         "bundle_json": str(bundle_json_path) if bundle_json_path is not None else None,
         "evidence_md": str(evidence_md_path) if evidence_md_path is not None else None,
+        "bundle_command_sh": str(bundle_command_path) if bundle_command_path is not None else None,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _resolved_bundle_command(
+    *,
+    input_json: Path,
+    output_dir: str,
+    finalists_json: Path,
+    finalists_md: Path,
+    min_finalists: int,
+    max_finalists: int,
+    require_real_input: bool,
+    run_check_in: bool,
+    check_json_path: Path | None,
+    runbook_md: Path | None,
+    bundle_json_path: Path | None,
+    evidence_md_path: Path | None,
+    blocked_md_path: Path | None,
+    bundle_command_path: Path | None,
+) -> str:
+    command = [
+        "python",
+        "-m",
+        "scripts.run_stage2_promotion_bundle",
+        "--input-json",
+        str(input_json),
+        "--output-dir",
+        output_dir,
+        "--output-json",
+        str(finalists_json),
+        "--output-md",
+        str(finalists_md),
+        "--min-finalists",
+        str(min_finalists),
+        "--max-finalists",
+        str(max_finalists),
+    ]
+    if require_real_input:
+        command.append("--require-real-input")
+    if run_check_in:
+        command.append("--run-check-in")
+        if check_json_path is not None:
+            command.extend(["--output-check-json", str(check_json_path)])
+    if runbook_md is not None:
+        command.extend(["--output-runbook-md", str(runbook_md)])
+    if bundle_json_path is not None:
+        command.extend(["--output-bundle-json", str(bundle_json_path)])
+    if evidence_md_path is not None:
+        command.extend(["--output-evidence-md", str(evidence_md_path)])
+    if blocked_md_path is not None:
+        command.extend(["--output-blocked-md", str(blocked_md_path)])
+    if bundle_command_path is not None:
+        command.extend(["--output-bundle-command-sh", str(bundle_command_path)])
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _write_bundle_command(path: Path, command: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(command + "\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -472,6 +543,7 @@ def main() -> None:
     bundle_json_path = Path(args.output_bundle_json) if args.output_bundle_json else None
     evidence_md_path = Path(args.output_evidence_md) if args.output_evidence_md else None
     blocked_md_path = Path(args.output_blocked_md) if args.output_blocked_md else None
+    bundle_command_path = Path(args.output_bundle_command_sh) if args.output_bundle_command_sh else None
     preflight_json_path = Path(args.output_preflight_json) if args.output_preflight_json else None
     check_json_path: Path | None = None
     if args.run_check_in:
@@ -483,6 +555,25 @@ def main() -> None:
             raise ValueError("--dry-run and --preflight are mutually exclusive")
 
         input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
+
+        resolved_bundle_command = _resolved_bundle_command(
+            input_json=input_json,
+            output_dir=args.output_dir,
+            finalists_json=finalists_json,
+            finalists_md=finalists_md,
+            min_finalists=args.min_finalists,
+            max_finalists=args.max_finalists,
+            require_real_input=args.require_real_input,
+            run_check_in=args.run_check_in,
+            check_json_path=check_json_path,
+            runbook_md=runbook_md,
+            bundle_json_path=bundle_json_path,
+            evidence_md_path=evidence_md_path,
+            blocked_md_path=blocked_md_path,
+            bundle_command_path=bundle_command_path,
+        )
+        if bundle_command_path is not None:
+            _write_bundle_command(bundle_command_path, resolved_bundle_command)
 
         if args.preflight:
             ranked_runs, _ = _load_ranked_runs_with_source_hash(
@@ -511,6 +602,7 @@ def main() -> None:
                     runbook_md=runbook_md,
                     bundle_json_path=bundle_json_path,
                     evidence_md_path=evidence_md_path,
+                    bundle_command_path=bundle_command_path,
                 )
             print(
                 "stage2_promotion_bundle_preflight_ok "
@@ -524,6 +616,7 @@ def main() -> None:
                 + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
                 + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
                 + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
+                + (f" bundle_command_sh={bundle_command_path}" if bundle_command_path is not None else "")
                 + (
                     f" preflight_json={args.output_preflight_json}"
                     if args.output_preflight_json
@@ -561,6 +654,7 @@ def main() -> None:
                 + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
                 + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
                 + (f" blocked_md={blocked_md_path}" if blocked_md_path is not None else "")
+                + (f" bundle_command_sh={bundle_command_path}" if bundle_command_path is not None else "")
             )
             return
 
@@ -661,6 +755,7 @@ def main() -> None:
             + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
             + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
             + (f" blocked_md={blocked_md_path}" if blocked_md_path is not None else "")
+            + (f" bundle_command_sh={bundle_command_path}" if bundle_command_path is not None else "")
         )
     except Exception as exc:
         if blocked_md_path is not None:
@@ -677,6 +772,7 @@ def main() -> None:
                 bundle_json_path=bundle_json_path,
                 evidence_md_path=evidence_md_path,
                 preflight_json_path=preflight_json_path,
+                bundle_command_path=bundle_command_path,
             )
             print(f"stage2_promotion_bundle_blocked blocked_md={blocked_md_path} error={type(exc).__name__}")
         raise

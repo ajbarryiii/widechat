@@ -866,3 +866,142 @@ def test_main_runbook_check_in_command_uses_absolute_ranked_path(tmp_path, monke
     assert f"--ranked-json {Path('artifacts/pilot/sample_ranked_runs.json').resolve()}" in runbook
     assert f"--finalists-json {(output_dir / 'stage2_finalists.json').resolve()}" in runbook
     assert f"--finalists-md {(output_dir / 'stage2_finalists.md').resolve()}" in runbook
+
+
+def test_main_writes_resolved_bundle_command_artifact(tmp_path, monkeypatch, capsys):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "promotion artifacts"
+    output_check_json = tmp_path / "receipts" / "stage2 check.json"
+    output_bundle_command = tmp_path / "receipts" / "stage2_bundle_command.sh"
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            },
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 2,
+                "disqualify_reason": None,
+            },
+        ]
+    }
+    input_json.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    def _fake_run_pilot_bundle_check(**kwargs):
+        Path(kwargs["output_check_json"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(kwargs["output_check_json"]).write_text('{"status":"ok"}\n', encoding="utf-8")
+        return 2
+
+    monkeypatch.setattr(bundle, "run_pilot_bundle_check", _fake_run_pilot_bundle_check)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+            "--run-check-in",
+            "--output-check-json",
+            str(output_check_json),
+            "--output-bundle-command-sh",
+            str(output_bundle_command),
+        ],
+    )
+
+    bundle.main()
+
+    command = output_bundle_command.read_text(encoding="utf-8").strip()
+    assert command.startswith("python -m scripts.run_stage2_promotion_bundle")
+    assert f"--input-json {shlex.quote(str(input_json))}" in command
+    assert f"--output-dir {shlex.quote(str(output_dir))}" in command
+    assert f"--output-json {shlex.quote(str(output_dir / 'stage2_finalists.json'))}" in command
+    assert f"--output-md {shlex.quote(str(output_dir / 'stage2_finalists.md'))}" in command
+    assert "--run-check-in" in command
+    assert f"--output-check-json {shlex.quote(str(output_check_json))}" in command
+    assert f"--output-bundle-command-sh {shlex.quote(str(output_bundle_command))}" in command
+
+    stdout = capsys.readouterr().out
+    assert f"bundle_command_sh={output_bundle_command}" in stdout
+
+
+def test_main_preflight_writes_bundle_command_path_in_receipt(tmp_path, monkeypatch):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "artifacts"
+    output_preflight_json = tmp_path / "receipts" / "stage2_preflight.json"
+    output_bundle_command = tmp_path / "receipts" / "stage2_bundle_command.sh"
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            },
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 2,
+                "disqualify_reason": None,
+            },
+        ]
+    }
+    input_json.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--preflight",
+            "--output-preflight-json",
+            str(output_preflight_json),
+            "--output-bundle-command-sh",
+            str(output_bundle_command),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+        ],
+    )
+
+    bundle.main()
+
+    payload = json.loads(output_preflight_json.read_text(encoding="utf-8"))
+    assert payload["bundle_command_sh"] == str(output_bundle_command)
+    assert output_bundle_command.is_file()
