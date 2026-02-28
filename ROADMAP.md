@@ -316,6 +316,8 @@ Examples:
                        - [x] Add blocked-run markdown receipt output (`--output-blocked-md`) in `scripts.run_stage2_promotion_bundle` so failed real-input executions still emit check-in-friendly blocker diagnostics with the exact invocation and planned artifact paths.
                        - [x] Add machine-readable auto-discovery receipt output (`--output-discovery-json`) in `scripts.run_stage2_promotion_bundle` so `--input-json auto` promotion attempts persist resolved-input/rejection diagnostics for audit on both success and blocked runs.
 - [ ] Run 1-2B token training for these only.
+  - [x] Add Stage 2 long-run planner (`python -m scripts.plan_stage2_long_runs --finalists-json ...`) that emits canonical 1B/2B `scripts.base_train` commands plus plan/runbook artifacts from promoted finalists.
+  - [ ] Execute generated long-run commands on target GPU(s) and check in resulting training/eval artifacts.
 - [ ] Compare convergence and final quality against baseline.
 
 ## Risks and Mitigations
