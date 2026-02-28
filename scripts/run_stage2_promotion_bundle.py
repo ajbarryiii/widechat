@@ -76,6 +76,11 @@ def _parse_args() -> argparse.Namespace:
         help="only resolve inputs/outputs and print planned bundle execution",
     )
     parser.add_argument(
+        "--dry-run-write-runbook",
+        action="store_true",
+        help="when used with --dry-run and --output-runbook-md, write the runbook without emitting finalists artifacts",
+    )
+    parser.add_argument(
         "--output-bundle-json",
         default="",
         help="optional path to write machine-readable promotion-bundle receipt JSON",
@@ -328,6 +333,20 @@ def main() -> None:
         check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
 
     if args.dry_run:
+        if runbook_md is not None and args.dry_run_write_runbook:
+            _write_runbook_md(
+                path=runbook_md,
+                input_json=str(input_json),
+                output_dir=args.output_dir,
+                finalists_json=finalists_json,
+                finalists_md=finalists_md,
+                min_finalists=args.min_finalists,
+                max_finalists=args.max_finalists,
+                require_real_input=args.require_real_input,
+                run_check_in=args.run_check_in,
+                output_check_json=str(check_json_path) if check_json_path is not None else args.output_check_json,
+                output_bundle_json=args.output_bundle_json,
+            )
         print(
             "stage2_promotion_bundle_dry_run_ok "
             f"input_json={input_json} "
@@ -337,6 +356,7 @@ def main() -> None:
             f"require_real_input={args.require_real_input}"
             + (f" check_json={check_json_path}" if check_json_path is not None else "")
             + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
+            + (f" runbook_written={runbook_md}" if runbook_md is not None and args.dry_run_write_runbook else "")
             + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
         )
         return

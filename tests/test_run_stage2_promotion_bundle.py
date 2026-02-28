@@ -507,6 +507,62 @@ def test_main_dry_run_preflights_paths_without_writing_or_checking(tmp_path, mon
     assert f"bundle_json={output_bundle_json}" in stdout
 
 
+def test_main_dry_run_can_write_runbook_when_enabled(tmp_path, monkeypatch, capsys):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "artifacts"
+    runbook_md = tmp_path / "docs" / "stage2_runbook.md"
+    input_json.write_text(
+        json.dumps(
+            {
+                "ranked_runs": [
+                    {
+                        "config": "4x3",
+                        "depth": 4,
+                        "n_branches": 3,
+                        "aspect_ratio": 192,
+                        "selected_tok_per_sec": 572110.0,
+                        "min_val_bpb": 4.0123,
+                        "token_budget": 250000000,
+                        "qualified": True,
+                        "rank": 1,
+                        "disqualify_reason": None,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--output-runbook-md",
+            str(runbook_md),
+            "--dry-run",
+            "--dry-run-write-runbook",
+        ],
+    )
+
+    bundle.main()
+
+    assert runbook_md.exists()
+    runbook = runbook_md.read_text(encoding="utf-8")
+    assert "python -m scripts.run_stage2_promotion_bundle" in runbook
+    assert f"--input-json {input_json}" in runbook
+    assert f"--output-dir {output_dir}" in runbook
+    assert not (output_dir / "stage2_finalists.json").exists()
+    assert not (output_dir / "stage2_finalists.md").exists()
+
+    stdout = capsys.readouterr().out
+    assert "stage2_promotion_bundle_dry_run_ok" in stdout
+    assert f"runbook_written={runbook_md}" in stdout
+
+
 def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
     runbook_md = tmp_path / "stage2_runbook.md"
     check_json = tmp_path / "checks" / "bundle.json"
