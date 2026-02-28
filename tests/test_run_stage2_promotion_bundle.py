@@ -582,6 +582,120 @@ def test_main_dry_run_can_write_runbook_when_enabled(tmp_path, monkeypatch, caps
     assert f"runbook_written={runbook_md}" in stdout
 
 
+def test_main_preflight_validates_without_writing_finalists(tmp_path, monkeypatch, capsys):
+    input_json = tmp_path / "ranked_runs.json"
+    output_dir = tmp_path / "artifacts"
+    output_check_json = tmp_path / "receipts" / "stage2_check.json"
+    output_bundle_json = tmp_path / "receipts" / "stage2_bundle.json"
+    output_evidence_md = tmp_path / "receipts" / "stage2_evidence.md"
+    output_preflight_json = tmp_path / "receipts" / "stage2_preflight.json"
+
+    ranked_runs = {
+        "ranked_runs": [
+            {
+                "config": "4x3",
+                "depth": 4,
+                "n_branches": 3,
+                "aspect_ratio": 192,
+                "selected_tok_per_sec": 572110.0,
+                "min_val_bpb": 4.0123,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 1,
+                "disqualify_reason": None,
+            },
+            {
+                "config": "12x1",
+                "depth": 12,
+                "n_branches": 1,
+                "aspect_ratio": 64,
+                "selected_tok_per_sec": 565800.0,
+                "min_val_bpb": 4.0310,
+                "token_budget": 250000000,
+                "qualified": True,
+                "rank": 2,
+                "disqualify_reason": None,
+            },
+        ]
+    }
+    input_json.write_text(json.dumps(ranked_runs), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(output_dir),
+            "--min-finalists",
+            "1",
+            "--max-finalists",
+            "2",
+            "--run-check-in",
+            "--output-check-json",
+            str(output_check_json),
+            "--output-bundle-json",
+            str(output_bundle_json),
+            "--output-evidence-md",
+            str(output_evidence_md),
+            "--preflight",
+            "--output-preflight-json",
+            str(output_preflight_json),
+        ],
+    )
+
+    bundle.main()
+
+    assert not (output_dir / "stage2_finalists.json").exists()
+    assert not (output_dir / "stage2_finalists.md").exists()
+    assert not output_check_json.exists()
+    assert not output_bundle_json.exists()
+    assert not output_evidence_md.exists()
+
+    preflight_payload = json.loads(output_preflight_json.read_text(encoding="utf-8"))
+    assert preflight_payload["status"] == "ok"
+    assert preflight_payload["input_json"] == str(input_json)
+    assert preflight_payload["finalists_json"] == str(output_dir / "stage2_finalists.json")
+    assert preflight_payload["finalists_md"] == str(output_dir / "stage2_finalists.md")
+    assert preflight_payload["finalists_count"] == 2
+    assert preflight_payload["run_check_in"] is True
+    assert preflight_payload["check_json"] == str(output_check_json)
+    assert preflight_payload["bundle_json"] == str(output_bundle_json)
+    assert preflight_payload["evidence_md"] == str(output_evidence_md)
+
+    stdout = capsys.readouterr().out
+    assert "stage2_promotion_bundle_preflight_ok" in stdout
+    assert f"input_json={input_json}" in stdout
+    assert f"json={output_dir / 'stage2_finalists.json'}" in stdout
+    assert f"md={output_dir / 'stage2_finalists.md'}" in stdout
+    assert f"check_json={output_check_json}" in stdout
+    assert f"bundle_json={output_bundle_json}" in stdout
+    assert f"evidence_md={output_evidence_md}" in stdout
+    assert f"preflight_json={output_preflight_json}" in stdout
+
+
+def test_main_preflight_rejects_mutually_exclusive_dry_run(tmp_path, monkeypatch):
+    input_json = tmp_path / "ranked_runs.json"
+    input_json.write_text(json.dumps({"ranked_runs": []}), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_stage2_promotion_bundle.py",
+            "--input-json",
+            str(input_json),
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--dry-run",
+            "--preflight",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--dry-run and --preflight are mutually exclusive"):
+        bundle.main()
+
+
 def test_runbook_includes_check_in_flags_when_enabled(tmp_path):
     runbook_md = tmp_path / "stage2_runbook.md"
     check_json = tmp_path / "checks" / "bundle.json"

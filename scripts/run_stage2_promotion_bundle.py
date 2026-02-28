@@ -76,6 +76,16 @@ def _parse_args() -> argparse.Namespace:
         help="only resolve inputs/outputs and print planned bundle execution",
     )
     parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="validate resolved inputs/finalist selection and print planned execution without writing finalists artifacts",
+    )
+    parser.add_argument(
+        "--output-preflight-json",
+        default="",
+        help="optional path to write machine-readable preflight receipt JSON",
+    )
+    parser.add_argument(
         "--dry-run-write-runbook",
         action="store_true",
         help="when used with --dry-run and --output-runbook-md, write the runbook without emitting finalists artifacts",
@@ -361,8 +371,48 @@ def _write_bundle_evidence_md(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_preflight_receipt(
+    *,
+    path: Path,
+    input_json: Path,
+    finalists_json: Path,
+    finalists_md: Path,
+    finalists_count: int,
+    min_finalists: int,
+    max_finalists: int,
+    run_check_in: bool,
+    require_real_input: bool,
+    output_dir: str,
+    check_json_path: Path | None,
+    runbook_md: Path | None,
+    bundle_json_path: Path | None,
+    evidence_md_path: Path | None,
+) -> None:
+    payload = {
+        "status": "ok",
+        "command": [*sys.argv],
+        "input_json": str(input_json),
+        "finalists_json": str(finalists_json),
+        "finalists_md": str(finalists_md),
+        "finalists_count": finalists_count,
+        "min_finalists": min_finalists,
+        "max_finalists": max_finalists,
+        "run_check_in": run_check_in,
+        "require_real_input": require_real_input,
+        "output_dir": output_dir,
+        "check_json": str(check_json_path) if check_json_path is not None else None,
+        "runbook_md": str(runbook_md) if runbook_md is not None else None,
+        "bundle_json": str(bundle_json_path) if bundle_json_path is not None else None,
+        "evidence_md": str(evidence_md_path) if evidence_md_path is not None else None,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
+    if args.dry_run and args.preflight:
+        raise ValueError("--dry-run and --preflight are mutually exclusive")
     input_json = _resolve_input_json(args.input_json, args.input_root, args.input_json_name)
     finalists_json, finalists_md = _resolve_output_paths(args.output_dir, args.output_json, args.output_md)
     runbook_md = Path(args.output_runbook_md) if args.output_runbook_md else None
@@ -371,6 +421,54 @@ def main() -> None:
     check_json_path: Path | None = None
     if args.run_check_in:
         check_json_path = Path(args.output_check_json) if args.output_check_json else Path(args.output_dir) / "pilot_bundle_check.json"
+
+    if args.preflight:
+        ranked_runs, _ = _load_ranked_runs_with_source_hash(
+            str(input_json),
+            require_real_input=args.require_real_input,
+        )
+        finalists = select_finalists(ranked_runs, max_finalists=args.max_finalists)
+        _validate_stage2_finalists(
+            finalists,
+            min_finalists=args.min_finalists,
+            max_finalists=args.max_finalists,
+        )
+        if args.output_preflight_json:
+            _write_preflight_receipt(
+                path=Path(args.output_preflight_json),
+                input_json=input_json,
+                finalists_json=finalists_json,
+                finalists_md=finalists_md,
+                finalists_count=len(finalists),
+                min_finalists=args.min_finalists,
+                max_finalists=args.max_finalists,
+                run_check_in=args.run_check_in,
+                require_real_input=args.require_real_input,
+                output_dir=args.output_dir,
+                check_json_path=check_json_path,
+                runbook_md=runbook_md,
+                bundle_json_path=bundle_json_path,
+                evidence_md_path=evidence_md_path,
+            )
+        print(
+            "stage2_promotion_bundle_preflight_ok "
+            f"input_json={input_json} "
+            f"finalists={len(finalists)} "
+            f"json={finalists_json} "
+            f"md={finalists_md} "
+            f"run_check_in={args.run_check_in} "
+            f"require_real_input={args.require_real_input}"
+            + (f" check_json={check_json_path}" if check_json_path is not None else "")
+            + (f" runbook_md={runbook_md}" if runbook_md is not None else "")
+            + (f" bundle_json={bundle_json_path}" if bundle_json_path is not None else "")
+            + (f" evidence_md={evidence_md_path}" if evidence_md_path is not None else "")
+            + (
+                f" preflight_json={args.output_preflight_json}"
+                if args.output_preflight_json
+                else ""
+            )
+        )
+        return
 
     if args.dry_run:
         if runbook_md is not None and args.dry_run_write_runbook:
