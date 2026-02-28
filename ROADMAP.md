@@ -322,6 +322,8 @@ Examples:
   - [x] Add single-command Stage 2 long-run bundle runner (`python -m scripts.run_stage2_long_run_bundle --finalists-json ... --output-dir ...`) with preflight/dry-run receipts plus blocked markdown output so target-GPU operators can capture canonical plan/runbook command artifacts before execution.
   - [ ] Execute generated long-run commands on target GPU(s) and check in resulting training/eval artifacts.
 - [ ] Compare convergence and final quality against baseline.
+  - [x] Add offline Stage 2 comparison helper (`python -m scripts.compare_stage2_long_runs --input-json ...`) that validates long-run metrics and emits baseline-relative JSON/markdown reports for review.
+  - [ ] Run the comparison helper on real Stage 2 training artifacts and check in the emitted baseline comparison report.
 
 ## Risks and Mitigations
 - Optimizer complexity for 3D batched weights: stage Muon support after correctness path is stable.
