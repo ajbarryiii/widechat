@@ -319,6 +319,7 @@ Examples:
                        - [x] Add machine-readable auto-discovery receipt output (`--output-discovery-json`) in `scripts.run_stage2_promotion_bundle` so `--input-json auto` promotion attempts persist resolved-input/rejection diagnostics for audit on both success and blocked runs.
 - [ ] Run 1-2B token training for these only.
   - [x] Add Stage 2 long-run planner (`python -m scripts.plan_stage2_long_runs --finalists-json ...`) that emits canonical 1B/2B `scripts.base_train` commands plus plan/runbook artifacts from promoted finalists.
+  - [x] Add single-command Stage 2 long-run bundle runner (`python -m scripts.run_stage2_long_run_bundle --finalists-json ... --output-dir ...`) with preflight/dry-run receipts plus blocked markdown output so target-GPU operators can capture canonical plan/runbook command artifacts before execution.
   - [ ] Execute generated long-run commands on target GPU(s) and check in resulting training/eval artifacts.
 - [ ] Compare convergence and final quality against baseline.
 
