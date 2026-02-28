@@ -10,12 +10,8 @@ from scripts import check_blackwell_evidence_bundle as checker
 
 def _write_bundle_files(bundle_dir: Path) -> None:
     bundle_dir.mkdir(parents=True, exist_ok=True)
-    for name in (
-        "flash_backend_smoke.json",
-        "flash_backend_status.log",
-        "blackwell_smoke_evidence.md",
-        "blackwell_smoke_runbook.md",
-    ):
+    (bundle_dir / "flash_backend_smoke.json").write_text("{}\n", encoding="utf-8")
+    for name in ("flash_backend_status.log", "blackwell_smoke_evidence.md", "blackwell_smoke_runbook.md"):
         (bundle_dir / name).write_text("fixture\n", encoding="utf-8")
 
 
@@ -220,4 +216,28 @@ def test_main_auto_rejects_when_only_sample_bundle_exists(tmp_path, monkeypatch)
     )
 
     with pytest.raises(RuntimeError, match="no real Blackwell bundle found"):
+        runner.main()
+
+
+def test_main_auto_rejects_payload_marked_sample_bundle(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    relabeled_sample_bundle = bundle_root / "run_relabeled"
+    _write_bundle_files(relabeled_sample_bundle)
+    (relabeled_sample_bundle / "flash_backend_smoke.json").write_text(
+        json.dumps({"is_sample": True}) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="payload marked is_sample=true"):
         runner.main()
