@@ -146,20 +146,35 @@ def _write_runbook_markdown(
 def _write_blocked_markdown(path: str, payload: dict) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    mode = str(payload.get("mode") or "preflight")
+    is_preflight = mode == "preflight"
+    title = "# Blackwell Smoke Preflight Blocker" if is_preflight else "# Blackwell Smoke Runtime Blocker"
+    intro = (
+        "This machine is not ready to run the Blackwell FA4 smoke bundle."
+        if is_preflight
+        else "Blackwell FA4 smoke execution failed before a complete evidence bundle was emitted."
+    )
     require_device_substring = payload.get("require_device_substring") or ""
     quoted_output_dir = shlex.quote(str(payload.get("output_dir") or ""))
     quoted_expect_backend = shlex.quote(str(payload.get("expect_backend") or "fa4"))
     quoted_require_device_substring = shlex.quote(require_device_substring)
+    selected_backend = payload.get("selected_backend")
+    status_line = payload.get("status_line")
+    selected_backend_line = [] if selected_backend is None else [f"- selected_backend: `{selected_backend}`"]
+    status_line_line = [] if status_line is None else [f"- status_line: `{status_line}`"]
     lines = [
-        "# Blackwell Smoke Preflight Blocker",
+        title,
         "",
-        "This machine is not ready to run the Blackwell FA4 smoke bundle.",
+        intro,
         "",
         "## Receipt",
+        f"- mode: `{mode}`",
         f"- generated_at_utc: `{payload.get('generated_at_utc') or ''}`",
         f"- ready: `{str(payload.get('ready')).lower()}`",
         f"- error: `{payload.get('error') or ''}`",
         f"- expect_backend: `{payload.get('expect_backend') or ''}`",
+        *selected_backend_line,
+        *status_line_line,
         f"- require_device_substring: `{require_device_substring}`",
         f"- cuda_available: `{str(payload.get('cuda_available')).lower()}`",
         f"- device_name: `{payload.get('device_name')}`",
@@ -177,6 +192,48 @@ def _write_blocked_markdown(path: str, payload: dict) -> None:
         "",
     ]
     output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _blocked_payload(
+    *,
+    mode: str,
+    output_dir: str,
+    expect_backend: str,
+    require_device_substring: str,
+    run_bundle_check: bool,
+    artifact_json: str,
+    status_line_path: str,
+    evidence_md: str,
+    runbook_md: str,
+    output_check_json: str,
+    ready: bool,
+    error: str,
+    status_line: str | None = None,
+    selected_backend: str | None = None,
+) -> dict:
+    payload = {
+        "generated_at_utc": _now_utc(),
+        "mode": mode,
+        "ready": ready,
+        "error": error,
+        "expect_backend": expect_backend,
+        "selected_backend": selected_backend,
+        "status_line": status_line,
+        "require_device_substring": require_device_substring,
+        "output_dir": output_dir,
+        "artifact_json": artifact_json,
+        "status_line_path": status_line_path,
+        "evidence_md": evidence_md,
+        "runbook_md": runbook_md,
+        "run_bundle_check": run_bundle_check,
+        "check_json": output_check_json if run_bundle_check else None,
+    }
+    payload.update(_device_metadata())
+    nvidia_smi_ok, nvidia_smi_lines, nvidia_smi_error = _query_nvidia_smi_gpus()
+    payload["nvidia_smi_ok"] = nvidia_smi_ok
+    payload["nvidia_smi"] = nvidia_smi_lines
+    payload["nvidia_smi_error"] = nvidia_smi_error
+    return payload
 
 
 def main() -> None:
@@ -228,26 +285,20 @@ def main() -> None:
             preflight_ready = False
             preflight_error = str(exc)
 
-        payload = {
-            "generated_at_utc": _now_utc(),
-            "mode": "preflight",
-            "ready": preflight_ready,
-            "error": preflight_error,
-            "expect_backend": args.expect_backend,
-            "require_device_substring": args.require_device_substring,
-            "output_dir": args.output_dir,
-            "artifact_json": artifact_json,
-            "status_line": status_line_path,
-            "evidence_md": evidence_md,
-            "runbook_md": runbook_md,
-            "run_bundle_check": args.run_bundle_check,
-            "check_json": output_check_json if args.run_bundle_check else None,
-        }
-        payload.update(_device_metadata())
-        nvidia_smi_ok, nvidia_smi_lines, nvidia_smi_error = _query_nvidia_smi_gpus()
-        payload["nvidia_smi_ok"] = nvidia_smi_ok
-        payload["nvidia_smi"] = nvidia_smi_lines
-        payload["nvidia_smi_error"] = nvidia_smi_error
+        payload = _blocked_payload(
+            mode="preflight",
+            output_dir=args.output_dir,
+            expect_backend=args.expect_backend,
+            require_device_substring=args.require_device_substring,
+            run_bundle_check=args.run_bundle_check,
+            artifact_json=artifact_json,
+            status_line_path=status_line_path,
+            evidence_md=evidence_md,
+            runbook_md=runbook_md,
+            output_check_json=output_check_json,
+            ready=preflight_ready,
+            error=preflight_error,
+        )
         _write_preflight_receipt(output_preflight_json, payload)
 
         if not preflight_ready:
@@ -268,65 +319,88 @@ def main() -> None:
         )
         return
 
-    _validate_environment(
-        require_cuda=True,
-        require_blackwell=True,
-        require_device_substring=args.require_device_substring,
-    )
-
-    status_line = backend_status_message()
-    print(status_line)
-    selected_backend = _extract_selected_backend(status_line)
-    if selected_backend != args.expect_backend:
-        raise RuntimeError(f"expected backend {args.expect_backend}, got {selected_backend}")
-
-    _write_smoke_artifact(artifact_json, status_line, selected_backend)
-    _write_status_line(status_line_path, status_line)
-
-    payload = _load_artifact(artifact_json)
-    selected_backend, capability = _validate_artifact(
-        payload,
-        expect_backend=args.expect_backend,
-        require_blackwell=True,
-        require_device_substring=args.require_device_substring,
-    )
-
-    recorded_status_line = _load_status_line(status_line_path)
-    status_line_backend = _validate_status_line_consistency(payload, recorded_status_line)
-    if status_line_backend != args.expect_backend:
-        raise RuntimeError(f"expected backend {args.expect_backend}, got {status_line_backend} in status-line file")
-
-    _write_evidence_markdown(
-        path=evidence_md,
-        payload=payload,
-        selected_backend=selected_backend,
-        capability=capability,
-        status_line_ok=True,
-    )
-
-    checker_receipt_path = "<none>"
-    if args.run_bundle_check:
-        run_bundle_check(
-            bundle_dir=Path(args.output_dir),
-            expect_backend=args.expect_backend,
-            check_in=False,
+    status_line = None
+    selected_backend = None
+    try:
+        _validate_environment(
+            require_cuda=True,
             require_blackwell=True,
-            require_git_tracked=False,
-            require_real_bundle=False,
             require_device_substring=args.require_device_substring,
-            output_check_json=output_check_json,
         )
-        checker_receipt_path = output_check_json
 
-    print(
-        "bundle_ok "
-        f"selected={selected_backend} "
-        f"artifact_json={artifact_json} "
-        f"status_line={status_line_path} "
-        f"evidence_md={evidence_md} "
-        f"runbook_md={runbook_md} "
-        f"check_json={checker_receipt_path}"
-    )
+        status_line = backend_status_message()
+        print(status_line)
+        selected_backend = _extract_selected_backend(status_line)
+        if selected_backend != args.expect_backend:
+            raise RuntimeError(f"expected backend {args.expect_backend}, got {selected_backend}")
+
+        _write_smoke_artifact(artifact_json, status_line, selected_backend)
+        _write_status_line(status_line_path, status_line)
+
+        payload = _load_artifact(artifact_json)
+        selected_backend, capability = _validate_artifact(
+            payload,
+            expect_backend=args.expect_backend,
+            require_blackwell=True,
+            require_device_substring=args.require_device_substring,
+        )
+
+        recorded_status_line = _load_status_line(status_line_path)
+        status_line_backend = _validate_status_line_consistency(payload, recorded_status_line)
+        if status_line_backend != args.expect_backend:
+            raise RuntimeError(f"expected backend {args.expect_backend}, got {status_line_backend} in status-line file")
+
+        _write_evidence_markdown(
+            path=evidence_md,
+            payload=payload,
+            selected_backend=selected_backend,
+            capability=capability,
+            status_line_ok=True,
+        )
+
+        checker_receipt_path = "<none>"
+        if args.run_bundle_check:
+            run_bundle_check(
+                bundle_dir=Path(args.output_dir),
+                expect_backend=args.expect_backend,
+                check_in=False,
+                require_blackwell=True,
+                require_git_tracked=False,
+                require_real_bundle=False,
+                require_device_substring=args.require_device_substring,
+                output_check_json=output_check_json,
+            )
+            checker_receipt_path = output_check_json
+
+        print(
+            "bundle_ok "
+            f"selected={selected_backend} "
+            f"artifact_json={artifact_json} "
+            f"status_line={status_line_path} "
+            f"evidence_md={evidence_md} "
+            f"runbook_md={runbook_md} "
+            f"check_json={checker_receipt_path}"
+        )
+    except RuntimeError as exc:
+        blocked_payload = _blocked_payload(
+            mode="smoke",
+            output_dir=args.output_dir,
+            expect_backend=args.expect_backend,
+            require_device_substring=args.require_device_substring,
+            run_bundle_check=args.run_bundle_check,
+            artifact_json=artifact_json,
+            status_line_path=status_line_path,
+            evidence_md=evidence_md,
+            runbook_md=runbook_md,
+            output_check_json=output_check_json,
+            ready=False,
+            error=str(exc),
+            status_line=status_line,
+            selected_backend=selected_backend,
+        )
+        _write_blocked_markdown(output_blocked_md, blocked_payload)
+        print(f"bundle_smoke_blocked blocked_md={output_blocked_md} reason={exc}")
+        raise
 
 
 if __name__ == "__main__":

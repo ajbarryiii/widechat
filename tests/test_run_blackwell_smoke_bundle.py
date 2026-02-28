@@ -137,15 +137,30 @@ def test_main_honors_custom_check_receipt_path_in_runbook_and_checker_call(tmp_p
 
 
 def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):
+    output_dir = tmp_path / "blackwell"
     status = "Flash Attention backend selection: selected=sdpa, mode=auto"
     monkeypatch.setattr(bundle, "_validate_environment", lambda require_cuda, require_blackwell, require_device_substring: None)
     monkeypatch.setattr(bundle, "backend_status_message", lambda: status)
+    monkeypatch.setattr(
+        bundle,
+        "_device_metadata",
+        lambda: {
+            "cuda_available": True,
+            "device_name": "NVIDIA GeForce RTX 5090",
+            "cuda_capability": [10, 0],
+        },
+    )
+    monkeypatch.setattr(
+        bundle,
+        "_query_nvidia_smi_gpus",
+        lambda: (True, ["NVIDIA GeForce RTX 5090, 575.64"], None),
+    )
     monkeypatch.setattr(
         "sys.argv",
         [
             "run_blackwell_smoke_bundle.py",
             "--output-dir",
-            str(tmp_path / "blackwell"),
+            str(output_dir),
             "--expect-backend",
             "fa4",
         ],
@@ -153,6 +168,61 @@ def test_main_rejects_unexpected_backend(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="expected backend fa4, got sdpa"):
         bundle.main()
+
+    blocked_md = output_dir / "blackwell_smoke_blocked.md"
+    blocked_content = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Smoke Runtime Blocker" in blocked_content
+    assert "- mode: `smoke`" in blocked_content
+    assert "- selected_backend: `sdpa`" in blocked_content
+    assert f"- status_line: `{status}`" in blocked_content
+    assert "failed before a complete evidence bundle was emitted" in blocked_content
+
+
+def test_main_runtime_environment_failure_writes_blocked_receipt(tmp_path, monkeypatch, capsys):
+    output_dir = tmp_path / "blackwell"
+    reason = "CUDA is required but not available"
+
+    def _fake_validate_environment(require_cuda, require_blackwell, require_device_substring):
+        raise RuntimeError(reason)
+
+    monkeypatch.setattr(bundle, "_validate_environment", _fake_validate_environment)
+    monkeypatch.setattr(
+        bundle,
+        "_device_metadata",
+        lambda: {
+            "cuda_available": False,
+            "device_name": None,
+            "cuda_capability": None,
+        },
+    )
+    monkeypatch.setattr(
+        bundle,
+        "_query_nvidia_smi_gpus",
+        lambda: (False, [], "nvidia-smi: command not found"),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_smoke_bundle.py",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match=reason):
+        bundle.main()
+
+    blocked_md = output_dir / "blackwell_smoke_blocked.md"
+    blocked_content = blocked_md.read_text(encoding="utf-8")
+    assert "# Blackwell Smoke Runtime Blocker" in blocked_content
+    assert "- mode: `smoke`" in blocked_content
+    assert f"- error: `{reason}`" in blocked_content
+    assert "- selected_backend:" not in blocked_content
+    assert "- status_line:" not in blocked_content
+
+    stdout = capsys.readouterr().out
+    assert "bundle_smoke_blocked" in stdout
+    assert f"blocked_md={blocked_md}" in stdout
 
 
 def test_main_passes_required_device_substring_to_environment_validation(tmp_path, monkeypatch):

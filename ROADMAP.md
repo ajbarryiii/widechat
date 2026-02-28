@@ -151,9 +151,10 @@ Examples:
     - [ ] Execute the bundle runner on target RTX 5090 and check in emitted evidence artifacts.
       - [x] Add runbook artifact output (`--output-runbook-md`) in `scripts.run_blackwell_smoke_bundle` so RTX 5090 operators can persist the exact execution/check-in checklist with smoke artifacts.
       - [ ] Execute the documented runbook flow on target RTX 5090 and check in emitted evidence artifacts.
-        - [x] Harden generated runbook commands with shell-escaped paths so RTX 5090 operators can execute/check in artifact flows from directories containing spaces without manual command edits.
-        - [x] Add `--dry-run` mode in `scripts.run_blackwell_smoke_bundle` so operators can emit/check runbook + canonical artifact paths before RTX 5090 execution without requiring CUDA.
-         - [x] Add smoke-bundle environment preflight receipts (`--preflight`, `--output-preflight-json`) in `scripts.run_blackwell_smoke_bundle` so operators can capture auditable blocker diagnostics before RTX 5090 execution.
+         - [x] Harden generated runbook commands with shell-escaped paths so RTX 5090 operators can execute/check in artifact flows from directories containing spaces without manual command edits.
+         - [x] Add `--dry-run` mode in `scripts.run_blackwell_smoke_bundle` so operators can emit/check runbook + canonical artifact paths before RTX 5090 execution without requiring CUDA.
+         - [x] Add runtime blocked-receipt emission in `scripts.run_blackwell_smoke_bundle` so failed on-device smoke attempts still persist reviewable blocker diagnostics (`blackwell_smoke_blocked.md`) with selected backend/status context.
+          - [x] Add smoke-bundle environment preflight receipts (`--preflight`, `--output-preflight-json`) in `scripts.run_blackwell_smoke_bundle` so operators can capture auditable blocker diagnostics before RTX 5090 execution.
          - [x] Enrich Blackwell smoke-bundle preflight receipts with CUDA device metadata plus `nvidia-smi` inventory/error fields so blocked RTX 5090 runs preserve actionable environment evidence in one artifact.
          - [x] Add blocked-preflight markdown receipt output (`--output-blocked-md`) in `scripts.run_blackwell_smoke_bundle` so failed preflight runs produce a review-friendly blocker artifact alongside machine-readable diagnostics.
          - [x] Capture and check in an RTX 5090 preflight blocker receipt when CUDA/PyTorch mismatch prevents FA4 smoke execution (`artifacts/blackwell/rtx5090_smoke_20260228/{blackwell_smoke_preflight.json,blackwell_smoke_blocked.md}`).
