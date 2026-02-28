@@ -158,8 +158,8 @@ Examples:
   - [ ] Run one on-device smoke on RTX 5090 and record log line with `selected=fa4`.
 
 ### Benchmark tests
-- [ ] Throughput benchmark at fixed `N`, `T`, and total batch.
-  - [ ] Compare `12x1` vs `2x5` vs `1x10`.
+- [x] Throughput benchmark at fixed `N`, `T`, and total batch.
+  - [x] Compare `12x1` vs `2x5` vs `1x10`.
 - [x] Track benchmark metrics.
   - [x] `train/tok_per_sec`
   - [x] `train/mfu`
