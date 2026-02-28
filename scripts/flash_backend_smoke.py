@@ -4,6 +4,7 @@ Example:
 python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell
 python -m scripts.flash_backend_smoke --output-json artifacts/flash_backend_smoke.json
 python -m scripts.flash_backend_smoke --output-status-line artifacts/flash_backend_status.log
+python -m scripts.flash_backend_smoke --output-dir artifacts/blackwell_smoke
 """
 
 import argparse
@@ -26,6 +27,14 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-json", default="", help="optional path to write parsed backend artifact")
     parser.add_argument("--output-status-line", default="", help="optional path to write canonical backend status line")
+    parser.add_argument(
+        "--output-dir",
+        default="",
+        help=(
+            "optional artifact directory that writes both flash_backend_smoke.json and "
+            "flash_backend_status.log"
+        ),
+    )
     parser.add_argument("--require-cuda", action="store_true", help="fail if CUDA is unavailable")
     parser.add_argument("--require-blackwell", action="store_true", help="fail unless CUDA capability is sm100+")
     return parser.parse_args()
@@ -84,19 +93,29 @@ def _write_status_line(path: str, status_line: str) -> None:
     output_path.write_text(status_line.rstrip("\n") + "\n", encoding="utf-8")
 
 
+def _resolve_output_paths(output_json: str, output_status_line: str, output_dir: str) -> tuple[str, str]:
+    if output_dir:
+        if output_json or output_status_line:
+            raise ValueError("--output-dir cannot be combined with --output-json or --output-status-line")
+        artifact_dir = Path(output_dir)
+        return str(artifact_dir / "flash_backend_smoke.json"), str(artifact_dir / "flash_backend_status.log")
+    return output_json, output_status_line
+
+
 def main() -> None:
     args = _parse_args()
     _validate_environment(args.require_cuda, args.require_blackwell)
+    output_json, output_status_line = _resolve_output_paths(args.output_json, args.output_status_line, args.output_dir)
 
     status = backend_status_message()
     print(status)
     selected = _extract_selected_backend(status)
     if args.expect_backend and selected != args.expect_backend:
         raise RuntimeError(f"expected backend {args.expect_backend}, got {selected}")
-    if args.output_json:
-        _write_smoke_artifact(args.output_json, status, selected)
-    if args.output_status_line:
-        _write_status_line(args.output_status_line, status)
+    if output_json:
+        _write_smoke_artifact(output_json, status, selected)
+    if output_status_line:
+        _write_status_line(output_status_line, status)
 
 
 if __name__ == "__main__":

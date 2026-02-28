@@ -2,7 +2,15 @@ import json
 
 import pytest
 
-from scripts.flash_backend_smoke import _device_metadata, _extract_selected_backend, _validate_environment, _write_smoke_artifact, _write_status_line
+from scripts import flash_backend_smoke
+from scripts.flash_backend_smoke import (
+    _device_metadata,
+    _extract_selected_backend,
+    _resolve_output_paths,
+    _validate_environment,
+    _write_smoke_artifact,
+    _write_status_line,
+)
 
 
 def test_extract_selected_backend_parses_known_backends():
@@ -85,3 +93,42 @@ def test_write_status_line_writes_canonical_line(tmp_path):
     _write_status_line(str(output), status)
 
     assert output.read_text(encoding="utf-8") == "Flash Attention backend selection: selected=fa4, mode=auto\n"
+
+
+def test_resolve_output_paths_expands_output_dir_only():
+    output_json, output_status = _resolve_output_paths("", "", "artifacts/blackwell")
+
+    assert output_json == "artifacts/blackwell/flash_backend_smoke.json"
+    assert output_status == "artifacts/blackwell/flash_backend_status.log"
+
+
+def test_resolve_output_paths_rejects_mixed_output_flags():
+    with pytest.raises(ValueError, match="cannot be combined"):
+        _resolve_output_paths("artifact.json", "", "artifacts/blackwell")
+
+
+def test_main_output_dir_writes_both_artifacts(tmp_path, monkeypatch):
+    output_dir = tmp_path / "smoke"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    monkeypatch.setattr(flash_backend_smoke, "backend_status_message", lambda: status)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "flash_backend_smoke.py",
+            "--expect-backend",
+            "fa4",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    flash_backend_smoke.main()
+
+    artifact_json = output_dir / "flash_backend_smoke.json"
+    artifact_status = output_dir / "flash_backend_status.log"
+    assert artifact_json.exists()
+    assert artifact_status.exists()
+    payload = json.loads(artifact_json.read_text(encoding="utf-8"))
+    assert payload["status_line"] == status
+    assert payload["selected_backend"] == "fa4"
+    assert artifact_status.read_text(encoding="utf-8") == f"{status}\n"
