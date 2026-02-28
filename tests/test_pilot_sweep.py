@@ -3,7 +3,8 @@ import pytest
 from types import SimpleNamespace
 
 from nanochat import pilot_sweep
-from scripts.pilot_sweep import _sanitize_label, _write_run_artifacts
+from scripts import pilot_sweep as pilot_sweep_script
+from scripts.pilot_sweep import _artifact_paths, _load_existing_run_artifact, _sanitize_label, _write_run_artifacts
 from nanochat.pilot_sweep import (
     MAX_RECOMMENDED_EVAL_EVERY,
     MIN_RECOMMENDED_EVAL_EVERY,
@@ -362,3 +363,83 @@ def test_write_run_artifacts_writes_log_and_json(tmp_path):
     json_path = tmp_path / "03-2x5.json"
     assert log_path.read_text(encoding="utf-8") == "training output"
     assert json.loads(json_path.read_text(encoding="utf-8")) == run_result
+
+
+def test_load_existing_run_artifact_returns_none_when_missing(tmp_path):
+    loaded = _load_existing_run_artifact(str(tmp_path), run_index=1, config_label="12x1")
+    assert loaded is None
+
+
+def test_load_existing_run_artifact_rejects_config_mismatch(tmp_path):
+    _log_path, metrics_path = _artifact_paths(str(tmp_path), run_index=1, config_label="12x1")
+    tmp_path.mkdir(exist_ok=True)
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump({"config": "6x2", "selected_tok_per_sec": 1000, "unstable": False}, f)
+
+    with pytest.raises(ValueError, match="artifact config mismatch"):
+        _load_existing_run_artifact(str(tmp_path), run_index=1, config_label="12x1")
+
+
+def test_main_resume_from_artifacts_reuses_saved_runs(tmp_path, monkeypatch):
+    total_batch_size = 1000
+    num_iterations = 100
+    token_budget = total_batch_size * num_iterations
+
+    for index, target in enumerate(pilot_sweep.DEFAULT_PILOT_TARGETS, start=1):
+        _write_run_artifacts(
+            artifacts_dir=str(tmp_path),
+            run_index=index,
+            run_result={
+                "config": target.label,
+                "selected_tok_per_sec": 1000 - index,
+                "min_val_bpb": 4.0 + index * 0.001,
+                "unstable": False,
+                "token_budget": token_budget,
+            },
+            output_text=f"{target.label} output",
+        )
+
+    def fail_if_run_single_pilot(_command):
+        raise AssertionError("run_single_pilot should not be called when all artifacts exist")
+
+    monkeypatch.setattr(pilot_sweep_script, "run_single_pilot", fail_if_run_single_pilot)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            str(total_batch_size),
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            str(token_budget),
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--resume-from-artifacts",
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+
+def test_main_resume_from_artifacts_requires_artifacts_dir(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--resume-from-artifacts",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="requires --artifacts-dir"):
+        pilot_sweep_script.main()

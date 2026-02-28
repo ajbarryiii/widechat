@@ -40,6 +40,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="optional directory for per-config logs/metrics artifacts",
     )
+    parser.add_argument(
+        "--resume-from-artifacts",
+        action="store_true",
+        help="reuse existing per-config artifacts and skip rerunning completed configs",
+    )
     parser.add_argument("--extra-arg", action="append", default=[], help="forward extra arg to each base_train run")
     parser.add_argument("--dry-run", action="store_true", help="print commands only")
     return parser.parse_args()
@@ -74,8 +79,41 @@ def _write_run_artifacts(
         json.dump(run_result, f, indent=2)
 
 
+def _artifact_paths(artifacts_dir: str, run_index: int, config_label: str) -> tuple[str, str]:
+    prefix = f"{run_index:02d}-{_sanitize_label(config_label)}"
+    return (
+        os.path.join(artifacts_dir, f"{prefix}.log"),
+        os.path.join(artifacts_dir, f"{prefix}.json"),
+    )
+
+
+def _load_existing_run_artifact(
+    artifacts_dir: str,
+    run_index: int,
+    config_label: str,
+) -> dict[str, int | float | bool | str | None] | None:
+    _log_path, metrics_path = _artifact_paths(artifacts_dir, run_index, config_label)
+    if not os.path.exists(metrics_path):
+        return None
+
+    with open(metrics_path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    if not isinstance(loaded, dict):
+        raise ValueError(f"artifact metrics must be a JSON object: {metrics_path}")
+
+    loaded_config = loaded.get("config")
+    if loaded_config is not None and loaded_config != config_label:
+        raise ValueError(
+            f"artifact config mismatch for run {run_index}: expected {config_label}, got {loaded_config}"
+        )
+    return loaded
+
+
 def main() -> None:
     args = _parse_args()
+    if args.resume_from_artifacts and not args.artifacts_dir:
+        raise ValueError("--resume-from-artifacts requires --artifacts-dir")
+
     runs = []
 
     for index, target in enumerate(DEFAULT_PILOT_TARGETS, start=1):
@@ -100,6 +138,18 @@ def main() -> None:
             "token_budget": num_iterations * args.total_batch_size,
             "command": command,
         }
+        if args.resume_from_artifacts:
+            loaded_run = _load_existing_run_artifact(
+                artifacts_dir=args.artifacts_dir,
+                run_index=index,
+                config_label=target.label,
+            )
+            if loaded_run is not None:
+                run_result.update(loaded_run)
+                runs.append(run_result)
+                print(f"resume: using existing artifacts for {target.label}")
+                continue
+
         if args.dry_run:
             runs.append(run_result)
             print(shlex.join(command))
