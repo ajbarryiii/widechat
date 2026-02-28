@@ -12,6 +12,7 @@ import sys
 from nanochat.pilot_sweep import (
     DEFAULT_PILOT_TARGETS,
     apply_ranking_rule,
+    format_finalists_summary,
     build_pilot_command,
     format_ranking_table,
     run_single_pilot,
@@ -31,6 +32,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--clear-bpb-gain", type=float, default=0.02)
     parser.add_argument("--python-exe", type=str, default=sys.executable)
     parser.add_argument("--output-json", type=str, default="", help="optional path to write machine-readable results")
+    parser.add_argument("--output-md", type=str, default="", help="optional path to write markdown ranking table + finalists")
     parser.add_argument("--extra-arg", action="append", default=[], help="forward extra arg to each base_train run")
     parser.add_argument("--dry-run", action="store_true", help="print commands only")
     return parser.parse_args()
@@ -81,7 +83,11 @@ def main() -> None:
         slowdown_threshold_pct=args.slowdown_threshold_pct,
         clear_bpb_gain=args.clear_bpb_gain,
     )
-    print(format_ranking_table(ranked))
+    ranking_table = format_ranking_table(ranked)
+    finalists_summary = format_finalists_summary(ranked)
+    print(ranking_table)
+    print()
+    print(finalists_summary)
 
     if args.output_json:
         payload = {
@@ -97,6 +103,20 @@ def main() -> None:
         }
         with open(args.output_json, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
+
+    if args.output_md:
+        lines = [
+            "## Pilot Sweep Ranking",
+            "",
+            ranking_table,
+            "",
+            "## Finalists",
+            "",
+            finalists_summary,
+            "",
+        ]
+        with open(args.output_md, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
 
 if __name__ == "__main__":

@@ -9,7 +9,9 @@ from nanochat.pilot_sweep import (
     apply_ranking_rule,
     build_pilot_command,
     extract_val_bpb_trace,
+    format_finalists_summary,
     format_ranking_table,
+    select_finalists,
     summarize_pilot_output,
 )
 
@@ -273,3 +275,64 @@ def test_format_ranking_table_emits_markdown_rows():
     assert "| Rank | Config | tok/sec | vs 12x1 | min val bpb | token budget | Status |" in table
     assert "| 1 | 12x1 | 1,000 | +0.0% | 4.1000 | 250,000,000 | qualified |" in table
     assert "| - | 2x5 | 900 | -10.0% | 4.2000 | 250,000,000 | disqualified (slow>5.0%) |" in table
+
+
+def test_select_finalists_returns_only_qualified_rows_up_to_limit():
+    rows = [
+        {
+            "rank": 1,
+            "config": "12x1",
+            "selected_tok_per_sec": 1000,
+            "min_val_bpb": 4.1,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+        {
+            "rank": None,
+            "config": "2x5",
+            "selected_tok_per_sec": 900,
+            "min_val_bpb": 4.2,
+            "token_budget": 250000000,
+            "qualified": False,
+            "disqualify_reason": "slow>5.0%",
+        },
+        {
+            "rank": 2,
+            "config": "6x2",
+            "selected_tok_per_sec": 980,
+            "min_val_bpb": 4.0,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+    ]
+    finalists = select_finalists(rows, max_finalists=1)
+    assert [row["config"] for row in finalists] == ["12x1"]
+
+
+def test_format_finalists_summary_reports_selected_configs():
+    rows = [
+        {
+            "rank": 1,
+            "config": "12x1",
+            "selected_tok_per_sec": 1000,
+            "min_val_bpb": 4.1,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+        {
+            "rank": 2,
+            "config": "6x2",
+            "selected_tok_per_sec": 980,
+            "min_val_bpb": 4.0,
+            "token_budget": 250000000,
+            "qualified": True,
+            "disqualify_reason": None,
+        },
+    ]
+    summary = format_finalists_summary(rows)
+    assert "Selected finalists:" in summary
+    assert "- 12x1: rank=1, tok/sec=1,000 (+0.0% vs 12x1), min_val_bpb=4.1000" in summary
+    assert "- 6x2: rank=2, tok/sec=980 (-2.0% vs 12x1), min_val_bpb=4.0000" in summary

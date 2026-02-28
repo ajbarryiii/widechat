@@ -256,3 +256,33 @@ def format_ranking_table(rows: list[dict[str, int | float | bool | str | None]])
             + " |"
         )
     return "\n".join(output_lines)
+
+
+def select_finalists(
+    rows: list[dict[str, int | float | bool | str | None]],
+    max_finalists: int = 3,
+) -> list[dict[str, int | float | bool | str | None]]:
+    if max_finalists <= 0:
+        raise ValueError("max_finalists must be > 0")
+    qualified = [row for row in rows if bool(row.get("qualified", False))]
+    return qualified[:max_finalists]
+
+
+def format_finalists_summary(rows: list[dict[str, int | float | bool | str | None]]) -> str:
+    finalists = select_finalists(rows)
+    if not finalists:
+        return "No qualified finalists were selected."
+    baseline_row = next(row for row in rows if row["config"] == "12x1")
+    baseline_tok = _as_float(baseline_row.get("selected_tok_per_sec"), "selected_tok_per_sec")
+    output_lines = ["Selected finalists:"]
+    for row in finalists:
+        selected_tok_per_sec = _as_float(row.get("selected_tok_per_sec"), "selected_tok_per_sec")
+        ratio_pct = 100.0 * (selected_tok_per_sec / baseline_tok - 1.0)
+        sign = "+" if ratio_pct >= 0 else ""
+        min_val_bpb = _as_optional_float(row.get("min_val_bpb"))
+        output_lines.append(
+            f"- {row['config']}: rank={row['rank']}, tok/sec={int(selected_tok_per_sec):,} "
+            f"({sign}{ratio_pct:.1f}% vs 12x1), "
+            f"min_val_bpb={'n/a' if min_val_bpb is None else f'{min_val_bpb:.4f}'}"
+        )
+    return "\n".join(output_lines)
