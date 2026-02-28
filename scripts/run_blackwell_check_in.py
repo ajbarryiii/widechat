@@ -5,6 +5,7 @@ python -m scripts.run_blackwell_check_in --bundle-dir artifacts/blackwell_smoke
 """
 
 import argparse
+import json
 from pathlib import Path
 
 from scripts.check_blackwell_evidence_bundle import _resolve_bundle_dir as _resolve_bundle_dir_from_checker
@@ -55,6 +56,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="validate required bundle files before strict check-in validation",
     )
+    parser.add_argument(
+        "--output-preflight-json",
+        default="",
+        help="optional path to write machine-readable preflight receipt JSON (preflight mode only)",
+    )
     return parser.parse_args()
 
 
@@ -88,24 +94,95 @@ def _write_check_markdown(
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_preflight_receipt(
+    *,
+    output_path: Path,
+    bundle_dir: Path | None,
+    expect_backend: str,
+    output_check_json: str,
+    require_device_substring: str,
+    allow_sample_bundle: bool,
+    ok: bool,
+    error: str,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "status": "ok" if ok else "blocked",
+        "bundle_dir": str(bundle_dir) if bundle_dir is not None else "",
+        "expect_backend": expect_backend,
+        "check_json": output_check_json,
+        "require_real_bundle": not allow_sample_bundle,
+        "require_device_substring": require_device_substring,
+        "ok": ok,
+        "error": error,
+    }
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     if args.preflight and args.dry_run:
         raise RuntimeError("--preflight and --dry-run are mutually exclusive")
+    if args.output_preflight_json and not args.preflight:
+        raise RuntimeError("--output-preflight-json requires --preflight")
 
-    bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
-    output_check_json = args.output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
+    bundle_dir: Path | None = None
+    output_check_json = args.output_check_json
+
+    try:
+        bundle_dir = _resolve_bundle_dir(args.bundle_dir, args.bundle_root)
+        if not output_check_json:
+            output_check_json = str(bundle_dir / "blackwell_bundle_check.json")
+    except RuntimeError as exc:
+        if args.preflight and args.output_preflight_json:
+            _write_preflight_receipt(
+                output_path=Path(args.output_preflight_json),
+                bundle_dir=None,
+                expect_backend=args.expect_backend,
+                output_check_json=output_check_json,
+                require_device_substring=args.require_device_substring,
+                allow_sample_bundle=args.allow_sample_bundle,
+                ok=False,
+                error=str(exc),
+            )
+        raise
+
+    assert bundle_dir is not None
+    output_check_json = output_check_json or str(bundle_dir / "blackwell_bundle_check.json")
     output_check_md = args.output_check_md
 
     if args.preflight:
-        run_bundle_preflight(
-            bundle_dir=bundle_dir,
-            require_real_bundle=not args.allow_sample_bundle,
-        )
+        preflight_ok = True
+        preflight_error = ""
+        try:
+            run_bundle_preflight(
+                bundle_dir=bundle_dir,
+                require_real_bundle=not args.allow_sample_bundle,
+            )
+        except RuntimeError as exc:
+            preflight_ok = False
+            preflight_error = str(exc)
+
+        if args.output_preflight_json:
+            _write_preflight_receipt(
+                output_path=Path(args.output_preflight_json),
+                bundle_dir=bundle_dir,
+                expect_backend=args.expect_backend,
+                output_check_json=output_check_json,
+                require_device_substring=args.require_device_substring,
+                allow_sample_bundle=args.allow_sample_bundle,
+                ok=preflight_ok,
+                error=preflight_error,
+            )
+
+        if not preflight_ok:
+            raise RuntimeError(preflight_error)
+
         print(
             "blackwell_check_in_preflight_ok "
             f"bundle_dir={bundle_dir} "
             f"require_real_bundle={not args.allow_sample_bundle}"
+            + (f" preflight_json={args.output_preflight_json}" if args.output_preflight_json else "")
         )
         return
 

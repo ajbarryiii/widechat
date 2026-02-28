@@ -253,6 +253,94 @@ def test_main_preflight_honors_allow_sample_bundle(tmp_path, monkeypatch):
     assert calls["require_real_bundle"] is False
 
 
+def test_main_preflight_writes_success_receipt(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    preflight_json = tmp_path / "receipts" / "preflight.json"
+
+    def _fake_run_bundle_preflight(**_kwargs):
+        return None
+
+    monkeypatch.setattr(runner, "run_bundle_preflight", _fake_run_bundle_preflight)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    runner.main()
+
+    payload = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert payload["status"] == "ok"
+    assert payload["ok"] is True
+    assert payload["error"] == ""
+    assert payload["bundle_dir"] == str(bundle_dir)
+    assert payload["require_real_bundle"] is True
+
+
+def test_main_preflight_writes_blocked_receipt_on_preflight_failure(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+    preflight_json = tmp_path / "receipts" / "preflight.json"
+
+    def _fake_run_bundle_preflight(**_kwargs):
+        raise RuntimeError("missing required bundle files")
+
+    monkeypatch.setattr(runner, "run_bundle_preflight", _fake_run_bundle_preflight)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="missing required bundle files"):
+        runner.main()
+
+    payload = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert payload["status"] == "blocked"
+    assert payload["ok"] is False
+    assert payload["error"] == "missing required bundle files"
+    assert payload["bundle_dir"] == str(bundle_dir)
+
+
+def test_main_preflight_writes_blocked_receipt_on_auto_discovery_failure(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "artifacts" / "blackwell"
+    preflight_json = tmp_path / "receipts" / "preflight.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            "auto",
+            "--bundle-root",
+            str(bundle_root),
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="bundle_root does not exist"):
+        runner.main()
+
+    payload = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert payload["status"] == "blocked"
+    assert payload["ok"] is False
+    assert payload["bundle_dir"] == ""
+    assert "bundle_root does not exist" in payload["error"]
+
+
 def test_main_rejects_preflight_dry_run_combination(tmp_path, monkeypatch):
     bundle_dir = tmp_path / "blackwell"
 
@@ -268,6 +356,24 @@ def test_main_rejects_preflight_dry_run_combination(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="mutually exclusive"):
+        runner.main()
+
+
+def test_main_rejects_output_preflight_json_without_preflight(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "blackwell"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_blackwell_check_in.py",
+            "--bundle-dir",
+            str(bundle_dir),
+            "--output-preflight-json",
+            str(tmp_path / "preflight.json"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="requires --preflight"):
         runner.main()
 
 
