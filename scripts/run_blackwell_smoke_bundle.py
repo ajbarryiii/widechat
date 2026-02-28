@@ -101,6 +101,10 @@ def _write_runbook_markdown(
         "- Run `python -m scripts.run_blackwell_check_in --bundle-dir"
         f" {quoted_output_dir} --expect-backend {quoted_expect_backend} --output-check-json"
         f" {quoted_check_json} --require-device-substring {quoted_require_device_substring}`.",
+        "- Equivalent strict checker command: `python -m scripts.check_blackwell_evidence_bundle"
+        f" --bundle-dir {quoted_output_dir} --expect-backend {quoted_expect_backend} --check-in"
+        f" --output-check-json {quoted_check_json} --require-device-substring"
+        f" {quoted_require_device_substring}`.",
         "- Verify evidence markdown includes device metadata and `status_line_ok: true`.",
         f"- Confirm `{output_dir}/blackwell_bundle_check.json` records `selected_backend: {expect_backend}`.",
         "- Commit the emitted evidence artifacts from this run.",

@@ -40,6 +40,8 @@ def test_main_writes_validated_artifact_bundle(tmp_path, monkeypatch, capsys):
     assert f"--output-dir {output_dir}" in runbook_content
     assert "--require-device-substring" in runbook_content
     assert "python -m scripts.run_blackwell_check_in --bundle-dir" in runbook_content
+    assert "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_content
+    assert "--check-in" in runbook_content
     assert "--output-check-json" in runbook_content
     assert f"{output_dir}/blackwell_bundle_check.json" in runbook_content
     assert "bundle_ok selected=fa4" in runbook_content
@@ -166,6 +168,7 @@ def test_main_shell_quotes_runbook_commands_for_spaced_paths(tmp_path, monkeypat
 
     assert f"--output-dir {quoted_output_dir}" in runbook_content
     assert quoted_check_json in runbook_content
+    assert "python -m scripts.check_blackwell_evidence_bundle --bundle-dir" in runbook_content
 
 
 def test_main_dry_run_writes_runbook_without_cuda_probe(tmp_path, monkeypatch, capsys):
