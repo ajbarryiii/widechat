@@ -148,6 +148,8 @@ Examples:
     - [ ] Execute the bundle runner on target RTX 5090 and check in emitted evidence artifacts.
       - [x] Add runbook artifact output (`--output-runbook-md`) in `scripts.run_blackwell_smoke_bundle` so RTX 5090 operators can persist the exact execution/check-in checklist with smoke artifacts.
       - [ ] Execute the documented runbook flow on target RTX 5090 and check in emitted evidence artifacts.
+        - [x] Add offline Blackwell evidence-bundle checker (`python -m scripts.check_blackwell_evidence_bundle --bundle-dir ... --expect-backend fa4`) so checked-in artifacts can be validated for completeness/consistency without requiring GPU access.
+        - [ ] Run the checker against emitted RTX 5090 artifacts during check-in.
 - [x] Keep backend selection explicit in logs so benchmarks confirm FA4 is actually active.
 
 ## Testing Plan (Rigorous)
