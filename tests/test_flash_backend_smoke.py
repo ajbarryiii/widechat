@@ -1,6 +1,8 @@
+import json
+
 import pytest
 
-from scripts.flash_backend_smoke import _extract_selected_backend, _validate_environment
+from scripts.flash_backend_smoke import _extract_selected_backend, _validate_environment, _write_smoke_artifact
 
 
 def test_extract_selected_backend_parses_known_backends():
@@ -37,3 +39,15 @@ def test_validate_environment_accepts_sm100(monkeypatch):
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     monkeypatch.setattr("torch.cuda.get_device_capability", lambda: (10, 0))
     _validate_environment(require_cuda=True, require_blackwell=True)
+
+
+def test_write_smoke_artifact_writes_expected_payload(tmp_path):
+    output = tmp_path / "artifacts" / "flash_backend.json"
+    status = "Flash Attention backend selection: selected=fa4, mode=auto"
+    _write_smoke_artifact(str(output), status, "fa4")
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload == {
+        "selected_backend": "fa4",
+        "status_line": status,
+    }

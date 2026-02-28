@@ -2,10 +2,13 @@
 
 Example:
 python -m scripts.flash_backend_smoke --expect-backend fa4 --require-cuda --require-blackwell
+python -m scripts.flash_backend_smoke --output-json artifacts/flash_backend_smoke.json
 """
 
 import argparse
+import json
 import re
+from pathlib import Path
 
 import torch
 
@@ -20,6 +23,7 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="fail if selected backend does not match",
     )
+    parser.add_argument("--output-json", default="", help="optional path to write parsed backend artifact")
     parser.add_argument("--require-cuda", action="store_true", help="fail if CUDA is unavailable")
     parser.add_argument("--require-blackwell", action="store_true", help="fail unless CUDA capability is sm100+")
     return parser.parse_args()
@@ -43,6 +47,16 @@ def _validate_environment(require_cuda: bool, require_blackwell: bool) -> None:
             raise RuntimeError("Blackwell check failed: CUDA capability must be sm100+")
 
 
+def _write_smoke_artifact(path: str, status_line: str, selected_backend: str) -> None:
+    payload = {
+        "status_line": status_line,
+        "selected_backend": selected_backend,
+    }
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     args = _parse_args()
     _validate_environment(args.require_cuda, args.require_blackwell)
@@ -52,6 +66,8 @@ def main() -> None:
     selected = _extract_selected_backend(status)
     if args.expect_backend and selected != args.expect_backend:
         raise RuntimeError(f"expected backend {args.expect_backend}, got {selected}")
+    if args.output_json:
+        _write_smoke_artifact(args.output_json, status, selected)
 
 
 if __name__ == "__main__":
