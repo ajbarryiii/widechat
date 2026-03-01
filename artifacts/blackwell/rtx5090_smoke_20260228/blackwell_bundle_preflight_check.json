@@ -1,0 +1,11 @@
+{
+  "bundle_dir": "artifacts/blackwell/rtx5090_smoke_20260228",
+  "require_real_bundle": true,
+  "ok": false,
+  "missing_files": [
+    "flash_backend_smoke.json",
+    "flash_backend_status.log",
+    "blackwell_smoke_evidence.md"
+  ],
+  "error": "bundle preflight failed: missing required bundle files (flash_backend_smoke.json, flash_backend_status.log, blackwell_smoke_evidence.md) in artifacts/blackwell/rtx5090_smoke_20260228; run `python -m scripts.run_blackwell_smoke_bundle --output-dir artifacts/blackwell/rtx5090_smoke_20260228` on RTX 5090"
+}

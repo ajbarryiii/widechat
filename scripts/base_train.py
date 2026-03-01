@@ -26,12 +26,12 @@ import torch
 
 from nanochat.gpt import GPT, GPTConfig
 from nanochat.dataloader import tokenizing_distributed_data_loader_bos_bestfit, tokenizing_distributed_data_loader_with_state_bos_bestfit
-from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type, get_peak_flops
+from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type, get_peak_flops, compute_training_perf_metrics, compute_post_warmup_tok_per_sec
 from nanochat.tokenizer import get_tokenizer, get_token_bytes
 from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
-from nanochat.flash_attention import HAS_FA3
+from nanochat.flash_attention import HAS_FLASH_ATTN, _backend_name, backend_status_message
 from scripts.base_eval import evaluate_core
 print_banner()
 
@@ -49,6 +49,7 @@ parser.add_argument("--fp8-recipe", type=str, default="tensorwise", choices=["ro
 parser.add_argument("--depth", type=int, default=20, help="depth of the Transformer model")
 parser.add_argument("--aspect-ratio", type=int, default=64, help="model_dim = depth * aspect_ratio")
 parser.add_argument("--head-dim", type=int, default=128, help="target head dimension for attention")
+parser.add_argument("--n-branches", type=int, default=1, help="number of parallel branches")
 parser.add_argument("--max-seq-len", type=int, default=2048, help="max context length")
 parser.add_argument("--window-pattern", type=str, default="SSSL", help="sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')")
 # Training horizon (only one used, in order of precedence)
@@ -101,12 +102,18 @@ use_dummy_wandb = args.run == "dummy" or not master_process
 wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat", name=args.run, config=user_config)
 
 # Flash Attention status
-if HAS_FA3:
-    print0("✓ Using Flash Attention 3 (Hopper GPU detected), efficient, new and awesome.")
+backend_name = _backend_name()
+print0(backend_status_message())
+if HAS_FLASH_ATTN:
+    if backend_name == "fa3":
+        print0("✓ Using Flash Attention 3 backend (Hopper path).")
+    else:
+        # This only happens when SDPA is explicitly forced in tests/dev.
+        print0("WARNING: Flash Attention backend override is set to SDPA.")
 else:
     print0("!" * 80)
-    print0("WARNING: Flash Attention 3 not available, using PyTorch SDPA fallback")
-    print0("WARNING: Training will be less efficient without FA3")
+    print0("WARNING: Flash Attention kernels not available, using PyTorch SDPA fallback")
+    print0("WARNING: Training will be less efficient without Flash Attention")
     if args.window_pattern != "L":
         print0(f"WARNING: SDPA has no support for sliding window attention (window_pattern='{args.window_pattern}'). Your GPU utilization will be terrible.")
         print0("WARNING: Recommend using --window-pattern L for full context attention without alternating sliding window patterns.")
@@ -132,6 +139,7 @@ def build_model_meta(depth):
     config = GPTConfig(
         sequence_len=args.max_seq_len, vocab_size=vocab_size,
         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
+        n_branches=args.n_branches,
         window_pattern=args.window_pattern,
     )
     with torch.device("meta"):
@@ -148,7 +156,7 @@ model.init_weights() # 3) All tensors get initialized
 
 # If we are resuming, overwrite the model parameters with those of the checkpoint
 base_dir = get_base_dir()
-output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
+output_dirname = args.model_tag if args.model_tag else f"d{args.depth}b{args.n_branches}" # e.g. d12b1
 checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
 resuming = args.resume_from_step != -1
 if resuming:
@@ -519,9 +527,17 @@ while True:
     smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_f # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA
     pct_done = 100 * step / num_iterations
-    tok_per_sec = int(total_batch_size / dt)
-    flops_per_sec = num_flops_per_token * total_batch_size / dt
-    mfu = 100 * flops_per_sec / (gpu_peak_flops * ddp_world_size)
+    perf_metrics = compute_training_perf_metrics(
+        total_batch_size=total_batch_size,
+        dt=dt,
+        num_flops_per_token=num_flops_per_token,
+        gpu_peak_flops=gpu_peak_flops,
+        ddp_world_size=ddp_world_size,
+        peak_memory_bytes=get_max_memory(),
+    )
+    tok_per_sec = perf_metrics["train/tok_per_sec"]
+    mfu = perf_metrics["train/mfu"]
+    peak_memory_mib = perf_metrics["train/peak_memory_mib"]
     if step > 10:
         total_training_time += dt # only count the time after the first 10 steps
     # Calculate ETA based on average time per step (excluding first 10 steps)
@@ -534,7 +550,7 @@ while True:
     else:
         eta_str = ""
     epoch = dataloader_state_dict["epoch"]
-    print0(f"step {step:05d}/{num_iterations:05d} ({pct_done:.2f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt * 1000:.2f}ms | tok/sec: {tok_per_sec:,} | bf16_mfu: {mfu:.2f} | epoch: {epoch} | total time: {total_training_time/60:.2f}m{eta_str}")
+    print0(f"step {step:05d}/{num_iterations:05d} ({pct_done:.2f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt * 1000:.2f}ms | tok/sec: {tok_per_sec:,} | bf16_mfu: {mfu:.2f} | peak_mem: {peak_memory_mib:.2f}MiB | epoch: {epoch} | total time: {total_training_time/60:.2f}m{eta_str}")
     if step % 100 == 0:
         log_data = {
             "step": step,
@@ -545,6 +561,7 @@ while True:
             "train/dt": dt,
             "train/tok_per_sec": tok_per_sec,
             "train/mfu": mfu,
+            "train/peak_memory_mib": peak_memory_mib,
             "train/epoch": epoch,
         }
         wandb_run.log(log_data)
@@ -564,10 +581,19 @@ while True:
         gc.collect() # manually collect, just to be safe for very, very long runs
 
 # print a few more stats
-print0(f"Peak memory usage: {get_max_memory() / 1024 / 1024:.2f}MiB")
+print0(f"Peak memory usage: {peak_memory_mib:.2f}MiB")
 print0(f"Total training time: {total_training_time/60:.2f}m")
 if val_bpb is not None:
     print0(f"Minimum validation bpb: {min_val_bpb:.6f}")
+
+post_warmup_steps = max(step - 10, 0)
+avg_tok_per_sec = compute_post_warmup_tok_per_sec(
+    total_batch_size=total_batch_size,
+    post_warmup_steps=post_warmup_steps,
+    total_training_time=total_training_time,
+)
+if avg_tok_per_sec is not None:
+    print0(f"Average tok/sec (post-warmup): {avg_tok_per_sec:,}")
 
 # Log to report
 from nanochat.report import get_report
@@ -588,10 +614,13 @@ get_report().log(section="Base model training", data=[
         "Minimum validation bpb": min_val_bpb if val_bpb is not None else None,
         "Final validation bpb": val_bpb,
         "CORE metric estimate": results.get("core_metric", None),
+        "Final train/tok_per_sec": tok_per_sec,
+        "Average train/tok_per_sec": avg_tok_per_sec,
+        "Final train/mfu": mfu,
         "MFU %": f"{mfu:.2f}%",
         "Total training flops": f"{flops_so_far:e}",
         "Total training time": f"{total_training_time/60:.2f}m",
-        "Peak memory usage": f"{get_max_memory() / 1024 / 1024:.2f}MiB",
+        "Peak memory usage": f"{peak_memory_mib:.2f}MiB",
     }
 ])
 

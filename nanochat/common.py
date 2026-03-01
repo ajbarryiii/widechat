@@ -256,3 +256,32 @@ def get_peak_flops(device_name: str) -> float:
     # Unknown GPU - return inf so MFU shows as 0% rather than a wrong guess
     logger.warning(f"Peak flops undefined for: {device_name}, MFU will show as 0%")
     return float('inf')
+
+
+def compute_training_perf_metrics(total_batch_size, dt, num_flops_per_token, gpu_peak_flops, ddp_world_size, peak_memory_bytes):
+    """Compute per-step throughput metrics used in training logs and benchmarks."""
+    if dt <= 0:
+        raise ValueError(f"dt must be > 0, got {dt}")
+    if ddp_world_size <= 0:
+        raise ValueError(f"ddp_world_size must be > 0, got {ddp_world_size}")
+
+    tok_per_sec = int(total_batch_size / dt)
+    flops_per_sec = num_flops_per_token * total_batch_size / dt
+    mfu = 100 * flops_per_sec / (gpu_peak_flops * ddp_world_size)
+    peak_memory_mib = peak_memory_bytes / (1024 * 1024)
+
+    return {
+        "train/tok_per_sec": tok_per_sec,
+        "train/mfu": mfu,
+        "train/peak_memory_mib": peak_memory_mib,
+    }
+
+
+def compute_post_warmup_tok_per_sec(total_batch_size, post_warmup_steps, total_training_time):
+    """Compute average tokens/sec across post-warmup steps.
+
+    Returns None when there is no valid post-warmup window.
+    """
+    if post_warmup_steps <= 0 or total_training_time <= 0:
+        return None
+    return int(total_batch_size * post_warmup_steps / total_training_time)

@@ -1,0 +1,52 @@
+{
+  "source": "artifacts/pilot/sample_ranked_runs.json",
+  "source_sha256": "89d1dedd0d6923e68000a3cca81f9ed90a921db7469a01f974b73abf4fcab10c",
+  "max_finalists": 3,
+  "selected_finalists": [
+    {
+      "config": "4x3",
+      "depth": 4,
+      "n_branches": 3,
+      "aspect_ratio": 192,
+      "token_budget": 249561088,
+      "selected_tok_per_sec": 572110.0,
+      "min_val_bpb": 4.0123,
+      "final_val_bpb": 4.0181,
+      "unstable": false,
+      "slowdown_pct": -1.1,
+      "qualified": true,
+      "disqualify_reason": null,
+      "rank": 1
+    },
+    {
+      "config": "6x2",
+      "depth": 6,
+      "n_branches": 2,
+      "aspect_ratio": 128,
+      "token_budget": 249561088,
+      "selected_tok_per_sec": 565900.0,
+      "min_val_bpb": 4.0206,
+      "final_val_bpb": 4.025,
+      "unstable": false,
+      "slowdown_pct": -0.0,
+      "qualified": true,
+      "disqualify_reason": null,
+      "rank": 2
+    },
+    {
+      "config": "12x1",
+      "depth": 12,
+      "n_branches": 1,
+      "aspect_ratio": 64,
+      "token_budget": 249561088,
+      "selected_tok_per_sec": 565800.0,
+      "min_val_bpb": 4.031,
+      "final_val_bpb": 4.0361,
+      "unstable": false,
+      "slowdown_pct": 0.0,
+      "qualified": true,
+      "disqualify_reason": null,
+      "rank": 3
+    }
+  ]
+}

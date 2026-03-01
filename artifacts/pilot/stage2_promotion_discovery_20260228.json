@@ -1,0 +1,12 @@
+{
+  "status": "blocked",
+  "mode": "auto",
+  "input_json_arg": "auto",
+  "input_root": "artifacts/pilot",
+  "input_json_name": "pilot_ranked_runs.json",
+  "selected_input_json": null,
+  "discovered_candidates": [],
+  "rejected_candidates": [],
+  "error_type": "RuntimeError",
+  "error": "no real pilot ranking JSON found under artifacts/pilot; run scripts.pilot_sweep on target GPU(s) first\ndiscovery searched for 'pilot_ranked_runs.json' files and rejected 0 candidate file(s)"
+}

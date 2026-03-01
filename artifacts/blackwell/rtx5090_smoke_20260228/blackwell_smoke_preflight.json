@@ -1,0 +1,23 @@
+{
+  "artifact_json": "artifacts/blackwell/rtx5090_smoke_20260228/flash_backend_smoke.json",
+  "check_json": null,
+  "cuda_available": false,
+  "cuda_capability": null,
+  "device_name": null,
+  "error": "CUDA is required but not available. nvidia-smi reports GPU(s): NVIDIA GeForce RTX 5090, 580.119.02. This usually means the active PyTorch build lacks CUDA support or is mismatched with the system CUDA driver/runtime.",
+  "evidence_md": "artifacts/blackwell/rtx5090_smoke_20260228/blackwell_smoke_evidence.md",
+  "expect_backend": "fa4",
+  "generated_at_utc": "2026-02-28T15:48:59Z",
+  "mode": "preflight",
+  "nvidia_smi": [
+    "NVIDIA GeForce RTX 5090, 580.119.02"
+  ],
+  "nvidia_smi_error": null,
+  "nvidia_smi_ok": true,
+  "output_dir": "artifacts/blackwell/rtx5090_smoke_20260228",
+  "ready": false,
+  "require_device_substring": "RTX 5090",
+  "run_bundle_check": false,
+  "runbook_md": "artifacts/blackwell/rtx5090_smoke_20260228/blackwell_smoke_runbook.md",
+  "status_line": "artifacts/blackwell/rtx5090_smoke_20260228/flash_backend_status.log"
+}

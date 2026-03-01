@@ -125,10 +125,16 @@ class KVCache:
         """
         assert self.get_pos() == 0, "Cannot prefill a non-empty KV cache"
         assert self.n_layers == other.n_layers and self.n_heads == other.n_heads and self.head_dim == other.head_dim
+        assert self.batch_size % other.batch_size == 0, (
+            f"Cannot prefill batch_size={self.batch_size} from batch_size={other.batch_size}"
+        )
         assert self.max_seq_len >= other.max_seq_len
         other_pos = other.get_pos()
-        self.k_cache[:, :, :other_pos, :, :] = other.k_cache[:, :, :other_pos, :, :]
-        self.v_cache[:, :, :other_pos, :, :] = other.v_cache[:, :, :other_pos, :, :]
+        repeat_factor = self.batch_size // other.batch_size
+        k_prefill = other.k_cache[:, :, :other_pos, :, :].repeat(1, repeat_factor, 1, 1, 1)
+        v_prefill = other.v_cache[:, :, :other_pos, :, :].repeat(1, repeat_factor, 1, 1, 1)
+        self.k_cache[:, :, :other_pos, :, :] = k_prefill
+        self.v_cache[:, :, :other_pos, :, :] = v_prefill
         self.cache_seqlens.fill_(other_pos)
 
 # -----------------------------------------------------------------------------
@@ -193,9 +199,10 @@ class Engine:
 
         # 1) Run a batch 1 prefill of the prompt tokens
         m = self.model.config
+        n_branches = getattr(m, "n_branches", 1)
         kv_model_kwargs = {"num_heads": m.n_kv_head, "head_dim": m.n_embd // m.n_head, "num_layers": m.n_layer}
         kv_cache_prefill = KVCache(
-            batch_size=1,
+            batch_size=n_branches,
             seq_len=len(tokens),
             device=device,
             dtype=dtype,
@@ -208,7 +215,7 @@ class Engine:
         # 2) Replicate the KV cache for each sample/row
         kv_length_hint = (len(tokens) + max_tokens) if max_tokens is not None else self.model.config.sequence_len
         kv_cache_decode = KVCache(
-            batch_size=num_samples,
+            batch_size=num_samples * n_branches,
             seq_len=kv_length_hint,
             device=device,
             dtype=dtype,

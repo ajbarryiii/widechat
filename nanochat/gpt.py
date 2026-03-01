@@ -33,6 +33,7 @@ class GPTConfig:
     n_head: int = 6 # number of query heads
     n_kv_head: int = 6 # number of key/value heads (GQA)
     n_embd: int = 768
+    n_branches: int = 1
     # Sliding window attention pattern string, tiled across layers. Final layer always L.
     # Characters: L=long (full context), S=short (half context)
     # Examples: "L"=all full context, "SL"=alternating, "SSL"=two short then one long
@@ -55,6 +56,21 @@ def apply_rotary_emb(x, cos, sin):
     y1 = x1 * cos + x2 * sin # rotate pairs of dims
     y2 = x1 * (-sin) + x2 * cos
     return torch.cat([y1, y2], 3)
+
+
+class BatchedLinear(nn.Module):
+    def __init__(self, n_branches, in_features, out_features):
+        super().__init__()
+        self.n_branches = n_branches
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(n_branches, out_features, in_features))
+
+    def forward(self, x):
+        assert x.ndim == 4, f"Expected x to have shape (N, T, R, I), got {tuple(x.shape)}"
+        assert x.size(2) == self.n_branches, f"Expected R={self.n_branches}, got R={x.size(2)}"
+        assert x.size(3) == self.in_features, f"Expected I={self.in_features}, got I={x.size(3)}"
+        return torch.einsum('ntri,roi->ntro', x, self.weight)
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
@@ -131,11 +147,117 @@ class MLP(nn.Module):
         return x
 
 
+class ParallelMLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.c_fc = BatchedLinear(config.n_branches, config.n_embd, 4 * config.n_embd)
+        self.c_proj = BatchedLinear(config.n_branches, 4 * config.n_embd, config.n_embd)
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = F.relu(x).square()
+        x = self.c_proj(x)
+        return x
+
+
+class ParallelCausalSelfAttention(nn.Module):
+    def __init__(self, config, layer_idx):
+        super().__init__()
+        self.layer_idx = layer_idx
+        self.n_branches = config.n_branches
+        self.n_head = config.n_head
+        self.n_kv_head = config.n_kv_head
+        self.n_embd = config.n_embd
+        self.head_dim = self.n_embd // self.n_head
+        assert self.n_embd % self.n_head == 0
+        assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0
+        self.c_q = BatchedLinear(self.n_branches, self.n_embd, self.n_head * self.head_dim)
+        self.c_k = BatchedLinear(self.n_branches, self.n_embd, self.n_kv_head * self.head_dim)
+        self.c_v = BatchedLinear(self.n_branches, self.n_embd, self.n_kv_head * self.head_dim)
+        self.c_proj = BatchedLinear(self.n_branches, self.n_embd, self.n_embd)
+        self.ve_gate_channels = 32
+        self.ve_gate = nn.Parameter(torch.empty(self.n_branches, self.n_kv_head, self.ve_gate_channels)) if has_ve(layer_idx, config.n_layer) else None
+
+    def _flatten_attention_tensor(self, x):
+        assert x.ndim == 5, f"Expected shape (N, T, R, H, D), got {tuple(x.shape)}"
+        n, t, r, h, d = x.shape
+        assert r == self.n_branches, f"Expected R={self.n_branches}, got R={r}"
+        return x.permute(0, 2, 1, 3, 4).reshape(n * r, t, h, d)
+
+    def _unflatten_attention_tensor(self, x, n, t):
+        assert x.ndim == 4, f"Expected shape (N*R, T, H, D), got {tuple(x.shape)}"
+        assert x.size(0) == n * self.n_branches, f"Expected N*R={n * self.n_branches}, got {x.size(0)}"
+        assert x.size(1) == t, f"Expected T={t}, got T={x.size(1)}"
+        return x.view(n, self.n_branches, t, x.size(2), x.size(3)).permute(0, 2, 1, 3, 4)
+
+    def forward(self, x, ve, cos_sin, window_size, kv_cache):
+        n, t, c = x.shape[0], x.shape[1], x.shape[3]
+        assert x.ndim == 4, f"Expected x to have shape (N, T, R, C), got {tuple(x.shape)}"
+        assert x.size(2) == self.n_branches, f"Expected R={self.n_branches}, got R={x.size(2)}"
+        assert c == self.n_embd, f"Expected C={self.n_embd}, got C={c}"
+
+        q = self.c_q(x).view(n, t, self.n_branches, self.n_head, self.head_dim)
+        k = self.c_k(x).view(n, t, self.n_branches, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(n, t, self.n_branches, self.n_kv_head, self.head_dim)
+
+        if ve is not None:
+            assert ve.shape == (n, t, self.n_branches, self.n_kv_head, self.head_dim), (
+                f"Expected ve shape {(n, t, self.n_branches, self.n_kv_head, self.head_dim)}, got {tuple(ve.shape)}"
+            )
+            gate_weight = self.ve_gate
+            if gate_weight is None:
+                raise AssertionError("ve must be None for layers without value embedding gate")
+            gate = 2 * torch.sigmoid(torch.einsum('ntrc,rhc->ntrh', x[..., :self.ve_gate_channels], gate_weight))
+            v = v + gate.unsqueeze(-1) * ve
+
+        q_flat = self._flatten_attention_tensor(q)
+        k_flat = self._flatten_attention_tensor(k)
+        v_flat = self._flatten_attention_tensor(v)
+
+        cos, sin = cos_sin
+        q_flat = apply_rotary_emb(q_flat, cos, sin)
+        k_flat = apply_rotary_emb(k_flat, cos, sin)
+        q_flat, k_flat = norm(q_flat), norm(k_flat)
+
+        if kv_cache is None:
+            y_flat = flash_attn.flash_attn_func(q_flat, k_flat, v_flat, causal=True, window_size=window_size)
+        else:
+            expected_batch = n * self.n_branches
+            assert kv_cache.cache_seqlens.numel() == expected_batch, (
+                f"Expected kv_cache batch={expected_batch}, got {kv_cache.cache_seqlens.numel()}"
+            )
+            k_cache, v_cache = kv_cache.get_layer_cache(self.layer_idx)
+            y_flat = flash_attn.flash_attn_with_kvcache(
+                q_flat, k_cache, v_cache,
+                k=k_flat, v=v_flat,
+                cache_seqlens=kv_cache.cache_seqlens,
+                causal=True,
+                window_size=window_size,
+            )
+            if self.layer_idx == kv_cache.n_layers - 1:
+                kv_cache.advance(t)
+        y = self._unflatten_attention_tensor(y_flat, n, t).contiguous().view(n, t, self.n_branches, self.n_embd)
+        y = self.c_proj(y)
+        return y
+
+
 class Block(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
         self.attn = CausalSelfAttention(config, layer_idx)
         self.mlp = MLP(config)
+
+    def forward(self, x, ve, cos_sin, window_size, kv_cache):
+        x = x + self.attn(norm(x), ve, cos_sin, window_size, kv_cache)
+        x = x + self.mlp(norm(x))
+        return x
+
+
+class ParallelBlock(nn.Module):
+    def __init__(self, config, layer_idx):
+        super().__init__()
+        self.attn = ParallelCausalSelfAttention(config, layer_idx)
+        self.mlp = ParallelMLP(config)
 
     def forward(self, x, ve, cos_sin, window_size, kv_cache):
         x = x + self.attn(norm(x), ve, cos_sin, window_size, kv_cache)
@@ -152,6 +274,7 @@ class GPT(nn.Module):
         """
         super().__init__()
         self.config = config
+        self.uses_parallel_branches = config.n_branches > 1
         # Compute per-layer window sizes for sliding window attention
         # window_size is (left, right) tuple: (-1, 0) for full context, (N, 0) for sliding window
         self.window_sizes = self._compute_window_sizes(config)
@@ -160,10 +283,15 @@ class GPT(nn.Module):
         padded_vocab_size = ((config.vocab_size + pad_vocab_size_to - 1) // pad_vocab_size_to) * pad_vocab_size_to
         if padded_vocab_size != config.vocab_size:
             print0(f"Padding vocab_size from {config.vocab_size} to {padded_vocab_size} for efficiency")
+        blocks = [ParallelBlock(config, layer_idx) for layer_idx in range(config.n_layer)] if self.uses_parallel_branches else [Block(config, layer_idx) for layer_idx in range(config.n_layer)]
         self.transformer = nn.ModuleDict({
             "wte": nn.Embedding(padded_vocab_size, config.n_embd),
-            "h": nn.ModuleList([Block(config, layer_idx) for layer_idx in range(config.n_layer)]),
+            "h": nn.ModuleList(blocks),
         })
+        self.branch_proj = nn.ModuleDict({
+            "linear_in": nn.Linear(config.n_embd, config.n_branches * config.n_embd, bias=False),
+            "linear_out": nn.Linear(config.n_branches * config.n_embd, config.n_embd, bias=False),
+        }) if self.uses_parallel_branches else None
         self.lm_head = nn.Linear(config.n_embd, padded_vocab_size, bias=False)
         # Per-layer learnable scalars (inspired by modded-nanogpt)
         # resid_lambdas: scales the residual stream at each layer (init 1.0 = neutral)
@@ -216,6 +344,10 @@ class GPT(nn.Module):
             torch.nn.init.uniform_(block.mlp.c_fc.weight, -s, s)
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
 
+        if self.branch_proj is not None:
+            torch.nn.init.uniform_(self.branch_proj["linear_in"].weight, -s, s)
+            torch.nn.init.zeros_(self.branch_proj["linear_out"].weight)
+
         # Per-layer scalars
         self.resid_lambdas.fill_(1.0)   # 1.0 => typical residual connections at init
         self.x0_lambdas.fill_(0.1)      # 0.1 => small initial weight for skip connection to input embedding
@@ -227,7 +359,10 @@ class GPT(nn.Module):
         # Gate weights init to zero so gates start at sigmoid(0) = 0.5, scaled by 2 -> 1.0 (neutral)
         for block in self.transformer.h:
             if block.attn.ve_gate is not None:
-                torch.nn.init.zeros_(block.attn.ve_gate.weight)
+                if isinstance(block.attn.ve_gate, nn.Parameter):
+                    torch.nn.init.zeros_(block.attn.ve_gate)
+                else:
+                    torch.nn.init.zeros_(block.attn.ve_gate.weight)
 
         # Rotary embeddings
         head_dim = self.config.n_embd // self.config.n_head
@@ -333,6 +468,8 @@ class GPT(nn.Module):
         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
         lm_head = sum(p.numel() for p in self.lm_head.parameters())
         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
+        if self.branch_proj is not None:
+            transformer_matrices += sum(p.numel() for p in self.branch_proj.parameters())
         scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel()
         total = wte + value_embeds + lm_head + transformer_matrices + scalars
         assert total == sum(p.numel() for p in self.parameters()), "Parameter count mismatch"
@@ -351,12 +488,14 @@ class GPT(nn.Module):
 
         # Separate out all parameters into groups
         matrix_params = list(self.transformer.h.parameters())
+        muon_matrix_params = [p for p in matrix_params if p.ndim >= 2]
+        branch_projection_params = list(self.branch_proj.parameters()) if self.branch_proj is not None else []
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
         resid_params = [self.resid_lambdas]
         x0_params = [self.x0_lambdas]
-        assert len(list(self.parameters())) == len(matrix_params) + len(embedding_params) + len(lm_head_params) + len(value_embeds_params) + len(resid_params) + len(x0_params)
+        assert len(list(self.parameters())) == len(matrix_params) + len(branch_projection_params) + len(embedding_params) + len(lm_head_params) + len(value_embeds_params) + len(resid_params) + len(x0_params)
 
         # Scale the LR for the AdamW parameters by ∝1/√dmodel (tuned for 768 dim model)
         dmodel_lr_scale = (model_dim / 768) ** -0.5
@@ -368,12 +507,13 @@ class GPT(nn.Module):
             dict(kind='adamw', params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+            dict(kind='adamw', params=branch_projection_params, lr=matrix_lr, betas=adam_betas, eps=1e-10, weight_decay=weight_decay),
             dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),  # higher beta1 for x0
         ]
         # Muon groups (matrix params, grouped by shape for stacking)
-        for shape in sorted({p.shape for p in matrix_params}):
-            group_params = [p for p in matrix_params if p.shape == shape]
+        for shape in sorted({(p.shape[-1], p.numel() // p.shape[-1]) for p in muon_matrix_params}):
+            group_params = [p for p in muon_matrix_params if (p.shape[-1], p.numel() // p.shape[-1]) == shape]
             param_groups.append(dict(
                 kind='muon', params=group_params, lr=matrix_lr,
                 momentum=0.95, ns_steps=5, beta2=0.95, weight_decay=weight_decay,
@@ -400,11 +540,33 @@ class GPT(nn.Module):
         x = self.transformer.wte(idx) # embed current token
         x = norm(x)
         x0 = x  # save initial normalized embedding for x0 residual
-        for i, block in enumerate(self.transformer.h):
-            x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
-            ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None
-            x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
-        x = norm(x)
+        if self.branch_proj is None:
+            for i, block in enumerate(self.transformer.h):
+                x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
+                ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None
+                x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
+            x = norm(x)
+        else:
+            n_branches = self.config.n_branches
+            n_kv_head = self.config.n_kv_head
+            head_dim = self.config.n_embd // self.config.n_head
+            if kv_cache is not None:
+                expected_batch = B * n_branches
+                assert kv_cache.cache_seqlens.numel() == expected_batch, (
+                    f"Expected kv_cache batch={expected_batch}, got {kv_cache.cache_seqlens.numel()}"
+                )
+            x = self.branch_proj["linear_in"](x).view(B, T, n_branches, self.config.n_embd)
+            x0 = x0.unsqueeze(2)
+            for i, block in enumerate(self.transformer.h):
+                x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
+                if str(i) in self.value_embeds:
+                    ve = self.value_embeds[str(i)](idx).view(B, T, n_kv_head, head_dim).unsqueeze(2).expand(B, T, n_branches, n_kv_head, head_dim)
+                else:
+                    ve = None
+                x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
+            x = x.contiguous().view(B, T, n_branches * self.config.n_embd)
+            x = self.branch_proj["linear_out"](x)
+            x = norm(x)
 
         # Forward the lm_head (compute logits)
         softcap = 15 # smoothly cap the logits to the range [-softcap, softcap]
