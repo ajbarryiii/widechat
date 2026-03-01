@@ -530,6 +530,30 @@ def test_main_resume_from_artifacts_requires_artifacts_dir(monkeypatch):
         pilot_sweep_script.main()
 
 
+def test_main_require_resume_artifacts_requires_resume_flag(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            "artifacts/pilot",
+            "--require-resume-artifacts",
+            "--preflight",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--require-resume-artifacts requires --resume-from-artifacts"):
+        pilot_sweep_script.main()
+
+
 def test_main_output_runbook_requires_artifacts_dir(monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
@@ -658,6 +682,46 @@ def test_main_preflight_resume_artifact_failure_writes_receipt(tmp_path, monkeyp
     assert any("expected log file" in err for err in receipt["errors"])
 
 
+def test_main_preflight_require_resume_artifacts_reports_missing_artifact(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    preflight_json = tmp_path / "preflight.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--resume-from-artifacts",
+            "--require-resume-artifacts",
+            "--target",
+            "12x1",
+            "--preflight",
+            "--output-preflight-json",
+            str(preflight_json),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="pilot sweep preflight failed"):
+        pilot_sweep_script.main()
+
+    receipt = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert receipt["ok"] is False
+    assert receipt["resume_from_artifacts"] is True
+    assert receipt["require_resume_artifacts"] is True
+    assert receipt["targets"][0]["resume_artifact_found"] is False
+    assert any("required resume artifacts are missing" in err for err in receipt["errors"])
+
+
 def test_main_preflight_failure_writes_blocked_markdown(tmp_path, monkeypatch):
     blocked_md = tmp_path / "pilot_sweep_blocked.md"
 
@@ -723,6 +787,39 @@ def test_main_runtime_failure_writes_blocked_markdown(tmp_path, monkeypatch):
     assert "# Pilot Sweep Blocked" in blocked_text
     assert "- mode: `run`" in blocked_text
     assert "target GPU is unavailable" in blocked_text
+
+
+def test_main_require_resume_artifacts_fails_without_relaunching_training(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    def fail_if_run_single_pilot(_command):
+        raise AssertionError("run_single_pilot should not be called in strict resume mode")
+
+    monkeypatch.setattr(pilot_sweep_script, "run_single_pilot", fail_if_run_single_pilot)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--resume-from-artifacts",
+            "--require-resume-artifacts",
+            "--target",
+            "12x1",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="required resume artifacts are missing"):
+        pilot_sweep_script.main()
 
 
 def test_main_writes_finalists_artifacts_from_ranked_runs(tmp_path, monkeypatch):

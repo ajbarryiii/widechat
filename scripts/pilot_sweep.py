@@ -74,6 +74,11 @@ def _parse_args() -> argparse.Namespace:
         help="reuse existing per-config artifacts and skip rerunning completed configs",
     )
     parser.add_argument(
+        "--require-resume-artifacts",
+        action="store_true",
+        help="fail if any selected resume artifact is missing instead of launching that config",
+    )
+    parser.add_argument(
         "--preflight",
         action="store_true",
         help="validate planned commands/artifacts without running training",
@@ -508,6 +513,15 @@ def _run_preflight(
                     errors.append(f"{target.label}: {exc}")
                     target_receipt["ok"] = False
                     target_receipt["error"] = str(exc)
+            elif args.require_resume_artifacts:
+                log_path, metrics_path = _artifact_paths(args.artifacts_dir, index, target.label)
+                message = (
+                    "required resume artifacts are missing for "
+                    f"{target.label}: expected {log_path} and {metrics_path}"
+                )
+                errors.append(f"{target.label}: {message}")
+                target_receipt["ok"] = False
+                target_receipt["error"] = message
 
         target_receipts.append(target_receipt)
 
@@ -515,6 +529,7 @@ def _run_preflight(
         "ok": not errors,
         "is_full_grid": is_full_grid,
         "resume_from_artifacts": args.resume_from_artifacts,
+        "require_resume_artifacts": args.require_resume_artifacts,
         "targets": target_receipts,
         "errors": errors,
     }
@@ -561,6 +576,7 @@ def _build_launch_manifest(
         "generated_at_utc": _now_utc(),
         "is_full_grid": is_full_grid,
         "resume_from_artifacts": args.resume_from_artifacts,
+        "require_resume_artifacts": args.require_resume_artifacts,
         "preflight": args.preflight,
         "dry_run": args.dry_run,
         "artifacts_dir": args.artifacts_dir,
@@ -571,6 +587,8 @@ def _build_launch_manifest(
 def _run(args: argparse.Namespace) -> None:
     if args.resume_from_artifacts and not args.artifacts_dir:
         raise ValueError("--resume-from-artifacts requires --artifacts-dir")
+    if args.require_resume_artifacts and not args.resume_from_artifacts:
+        raise ValueError("--require-resume-artifacts requires --resume-from-artifacts")
     if args.output_runbook_md and not args.artifacts_dir:
         raise ValueError("--output-runbook-md requires --artifacts-dir")
     if args.output_preflight_json and not args.preflight:
@@ -664,6 +682,12 @@ def _run(args: argparse.Namespace) -> None:
                 runs.append(run_result)
                 print(f"resume: using existing artifacts for {target.label}")
                 continue
+            if args.require_resume_artifacts:
+                log_path, metrics_path = _artifact_paths(args.artifacts_dir, index, target.label)
+                raise ValueError(
+                    "required resume artifacts are missing for "
+                    f"{target.label}: expected {log_path} and {metrics_path}"
+                )
 
         if args.dry_run:
             runs.append(run_result)
