@@ -40,13 +40,13 @@
             cuda.cuda_nvcc
           ];
 
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+          LD_LIBRARY_PATH = "/run/opengl-driver/lib:${pkgs.lib.makeLibraryPath [
             cuda.cudatoolkit
             cuda.cudnn
             cuda.nccl
             pkgs.zlib
             pkgs.stdenv.cc.cc
-          ];
+          ]}";
 
           CUDA_PATH = "${cuda.cudatoolkit}";
           CUDA_HOME = "${cuda.cudatoolkit}";

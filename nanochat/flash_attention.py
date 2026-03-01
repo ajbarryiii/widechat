@@ -1,19 +1,21 @@
 """
-Unified Flash Attention interface with automatic FA4/FA3/SDPA switching.
+Unified Flash Attention interface with automatic FA3/SDPA switching.
 
 Backend priority (auto mode):
-1) Flash Attention 4 on Blackwell+ (sm100+)
-2) Flash Attention 3 on Hopper (sm90)
-3) PyTorch SDPA fallback everywhere else
+1) Flash Attention 3 on Hopper (sm90)
+2) PyTorch SDPA fallback everywhere else
 
 Exports `flash_attn` namespace matching the Flash Attention interface.
 """
+import importlib
+import os
+
 import torch
 import torch.nn.functional as F
 
 
 # =============================================================================
-# Detection: Try to load FA4/FA3 kernels
+# Detection: Try to load FA3 kernels
 # =============================================================================
 def _resolve_kernel_interface(kernel):
     """Return an object exposing flash_attn_func/flash_attn_with_kvcache."""
@@ -30,34 +32,84 @@ def _resolve_kernel_interface(kernel):
     return None
 
 
-_fa4_probe = "not_attempted"
+class _FlashAttnFunctionAdapter:
+    """Adapter for modules that only expose flash_attn_func."""
+
+    def __init__(self, flash_attn_func_impl, flash_attn_with_kvcache_impl=None):
+        self._flash_attn_func_impl = flash_attn_func_impl
+        self._flash_attn_with_kvcache_impl = flash_attn_with_kvcache_impl
+
+    def flash_attn_func(self, q, k, v, causal=False, window_size=(-1, -1)):
+        return self._flash_attn_func_impl(q, k, v, causal=causal, window_size=window_size)
+
+    def flash_attn_with_kvcache(
+        self,
+        q,
+        k_cache,
+        v_cache,
+        k=None,
+        v=None,
+        cache_seqlens=None,
+        causal=False,
+        window_size=(-1, -1),
+    ):
+        if self._flash_attn_with_kvcache_impl is not None:
+            return self._flash_attn_with_kvcache_impl(
+                q,
+                k_cache,
+                v_cache,
+                k=k,
+                v=v,
+                cache_seqlens=cache_seqlens,
+                causal=causal,
+                window_size=window_size,
+            )
+        return globals()["_sdpa_flash_attn_with_kvcache_impl"](
+            q,
+            k_cache,
+            v_cache,
+            k=k,
+            v=v,
+            cache_seqlens=cache_seqlens,
+            window_size=window_size,
+        )
+
+
+def _resolve_function_only_interface(module):
+    flash_attn_func_impl = getattr(module, "flash_attn_func", None)
+    if flash_attn_func_impl is None:
+        return None
+
+    flash_attn_with_kvcache_impl = getattr(module, "flash_attn_with_kvcache", None)
+    if flash_attn_with_kvcache_impl is None:
+        try:
+            fallback_module = importlib.import_module("flash_attn.flash_attn_interface")
+            flash_attn_with_kvcache_impl = getattr(fallback_module, "flash_attn_with_kvcache", None)
+        except Exception:
+            flash_attn_with_kvcache_impl = None
+
+    return _FlashAttnFunctionAdapter(
+        flash_attn_func_impl=flash_attn_func_impl,
+        flash_attn_with_kvcache_impl=flash_attn_with_kvcache_impl,
+    )
+
+
+def _resolve_module_interface(module):
+    interface = _resolve_kernel_interface(module)
+    if interface is not None:
+        return interface
+    return _resolve_function_only_interface(module)
+
+
 _fa3_probe = "not_attempted"
 
+_DEFAULT_FA3_REPO_ID = "varunneal/flash-attention-3"
+_FA3_REPO_ID_ENV = "NANOCHAT_FA3_REPO_ID"
 
-def _load_flash_attention_4():
-    """Try to load Flash Attention 4 (Blackwell+ GPUs, sm100+)."""
-    global _fa4_probe
-    if not torch.cuda.is_available():
-        _fa4_probe = "cuda_unavailable"
-        return None
-    try:
-        major, minor = torch.cuda.get_device_capability()
-        if major < 10:
-            _fa4_probe = f"unsupported_cc_sm{major}{minor}"
-            return None
-        import os
-        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-        from kernels import get_kernel
-        kernel = get_kernel('varunneal/flash-attention-4')
-        interface = _resolve_kernel_interface(kernel)
-        if interface is None:
-            _fa4_probe = "invalid_kernel_interface"
-            return None
-        _fa4_probe = "available"
-        return interface
-    except Exception as exc:
-        _fa4_probe = f"load_error:{type(exc).__name__}"
-        return None
+
+def _resolve_repo_id(env_var: str, default_repo_id: str) -> str:
+    repo_id = os.environ.get(env_var, "").strip()
+    return repo_id if repo_id else default_repo_id
 
 
 def _load_flash_attention_3():
@@ -71,11 +123,11 @@ def _load_flash_attention_3():
         if major != 9:
             _fa3_probe = f"unsupported_cc_sm{major}{minor}"
             return None
-        import os
+
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
         from kernels import get_kernel
-        kernel = get_kernel('varunneal/flash-attention-3')
-        interface = _resolve_kernel_interface(kernel)
+        kernel = get_kernel(_resolve_repo_id(_FA3_REPO_ID_ENV, _DEFAULT_FA3_REPO_ID))
+        interface = _resolve_module_interface(kernel)
         if interface is None:
             _fa3_probe = "invalid_kernel_interface"
             return None
@@ -86,29 +138,22 @@ def _load_flash_attention_3():
         return None
 
 
-_fa4 = _load_flash_attention_4()
 _fa3 = _load_flash_attention_3()
-HAS_FA4 = _fa4 is not None
 HAS_FA3 = _fa3 is not None
-HAS_FLASH_ATTN = HAS_FA4 or HAS_FA3
+HAS_FLASH_ATTN = HAS_FA3
 
-# Override for testing: set to 'fa4', 'fa3', 'sdpa', or None (auto)
+# Override for testing: set to 'fa3', 'sdpa', or None (auto)
 _override_impl = None
 
 
 def _backend_name():
     """Return selected backend name after override resolution."""
-    assert _override_impl in (None, 'fa4', 'fa3', 'sdpa')
-    if _override_impl == 'fa4':
-        assert HAS_FA4, "Cannot override to FA4: not available on this hardware"
-        return 'fa4'
+    assert _override_impl in (None, 'fa3', 'sdpa')
     if _override_impl == 'fa3':
         assert HAS_FA3, "Cannot override to FA3: not available on this hardware"
         return 'fa3'
     if _override_impl == 'sdpa':
         return 'sdpa'
-    if HAS_FA4:
-        return 'fa4'
     if HAS_FA3:
         return 'fa3'
     return 'sdpa'
@@ -126,11 +171,9 @@ def backend_diagnostics():
     return {
         "selected_backend": backend_name,
         "mode": mode,
-        "has_fa4": HAS_FA4,
         "has_fa3": HAS_FA3,
         "cuda_available": torch.cuda.is_available(),
         "cuda_cc": capability,
-        "fa4_probe": _fa4_probe,
         "fa3_probe": _fa3_probe,
     }
 
@@ -141,9 +184,9 @@ def backend_status_message():
     return (
         "Flash Attention backend selection: "
         f"selected={diagnostics['selected_backend']}, mode={diagnostics['mode']}, "
-        f"has_fa4={diagnostics['has_fa4']}, has_fa3={diagnostics['has_fa3']}, "
+        f"has_fa3={diagnostics['has_fa3']}, "
         f"cuda_available={diagnostics['cuda_available']}, cuda_cc={diagnostics['cuda_cc']}, "
-        f"fa4_probe={diagnostics['fa4_probe']}, fa3_probe={diagnostics['fa3_probe']}"
+        f"fa3_probe={diagnostics['fa3_probe']}"
     )
 
 
@@ -190,6 +233,33 @@ def _sdpa_attention(q, k, v, window_size, enable_gqa):
     
     return F.scaled_dot_product_attention(q, k, v, attn_mask=mask, enable_gqa=enable_gqa)
 
+
+def _sdpa_flash_attn_with_kvcache_impl(q, k_cache, v_cache, k=None, v=None, cache_seqlens=None, window_size=(-1, -1)):
+    # SDPA fallback: manually manage KV cache
+    B, T_new, H, D = q.shape
+    assert cache_seqlens is not None, "cache_seqlens is required for SDPA fallback"
+    pos = cache_seqlens[0].item()  # assume uniform position across batch
+
+    # Insert new k, v into cache (in-place, matching FA behavior)
+    if k is not None and v is not None:
+        k_cache[:, pos:pos+T_new, :, :] = k
+        v_cache[:, pos:pos+T_new, :, :] = v
+
+    # Get full cache up to current position + new tokens
+    end_pos = pos + T_new
+    k_full = k_cache[:, :end_pos, :, :]
+    v_full = v_cache[:, :end_pos, :, :]
+
+    # Transpose to SDPA layout: (B, T, H, D) -> (B, H, T, D)
+    q_sdpa = q.transpose(1, 2)
+    k_sdpa = k_full.transpose(1, 2)
+    v_sdpa = v_full.transpose(1, 2)
+
+    enable_gqa = q_sdpa.size(1) != k_sdpa.size(1)
+    y_sdpa = _sdpa_attention(q_sdpa, k_sdpa, v_sdpa, window_size, enable_gqa)
+
+    return y_sdpa.transpose(1, 2)  # back to (B, T, H, D)
+
 # =============================================================================
 # Public API: Same interface as FA3
 # =============================================================================
@@ -206,9 +276,6 @@ def flash_attn_func(q, k, v, causal=False, window_size=(-1, -1)):
         Output tensor of shape (B, T, H, D)
     """
     backend_name = _backend_name()
-    if backend_name == 'fa4':
-        assert _fa4 is not None
-        return _fa4.flash_attn_func(q, k, v, causal=causal, window_size=window_size)
     if backend_name == 'fa3':
         assert _fa3 is not None
         return _fa3.flash_attn_func(q, k, v, causal=causal, window_size=window_size)
@@ -241,12 +308,6 @@ def flash_attn_with_kvcache(q, k_cache, v_cache, k=None, v=None, cache_seqlens=N
         Output tensor of shape (B, T_new, H, D)
     """
     backend_name = _backend_name()
-    if backend_name == 'fa4':
-        assert _fa4 is not None
-        return _fa4.flash_attn_with_kvcache(
-            q, k_cache, v_cache, k=k, v=v, cache_seqlens=cache_seqlens,
-            causal=causal, window_size=window_size
-        )
     if backend_name == 'fa3':
         assert _fa3 is not None
         return _fa3.flash_attn_with_kvcache(
@@ -254,30 +315,15 @@ def flash_attn_with_kvcache(q, k_cache, v_cache, k=None, v=None, cache_seqlens=N
             causal=causal, window_size=window_size
         )
 
-    # SDPA fallback: manually manage KV cache
-    B, T_new, H, D = q.shape
-    assert cache_seqlens is not None, "cache_seqlens is required for SDPA fallback"
-    pos = cache_seqlens[0].item()  # assume uniform position across batch
-
-    # Insert new k, v into cache (in-place, matching FA3 behavior)
-    if k is not None and v is not None:
-        k_cache[:, pos:pos+T_new, :, :] = k
-        v_cache[:, pos:pos+T_new, :, :] = v
-
-    # Get full cache up to current position + new tokens
-    end_pos = pos + T_new
-    k_full = k_cache[:, :end_pos, :, :]
-    v_full = v_cache[:, :end_pos, :, :]
-
-    # Transpose to SDPA layout: (B, T, H, D) -> (B, H, T, D)
-    q_sdpa = q.transpose(1, 2)
-    k_sdpa = k_full.transpose(1, 2)
-    v_sdpa = v_full.transpose(1, 2)
-
-    enable_gqa = q_sdpa.size(1) != k_sdpa.size(1)
-    y_sdpa = _sdpa_attention(q_sdpa, k_sdpa, v_sdpa, window_size, enable_gqa)
-
-    return y_sdpa.transpose(1, 2)  # back to (B, T, H, D)
+    return _sdpa_flash_attn_with_kvcache_impl(
+        q,
+        k_cache,
+        v_cache,
+        k=k,
+        v=v,
+        cache_seqlens=cache_seqlens,
+        window_size=window_size,
+    )
 
 
 # =============================================================================

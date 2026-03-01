@@ -7,21 +7,18 @@ Note on test structure:
     Tests are split into two classes due to dtype/device constraints:
 
     1. TestFastBackendVsSDPA: Comparison tests that run both the selected
-       Flash Attention backend (FA4 or FA3) and SDPA on the same inputs and
+       Flash Attention backend (FA3) and SDPA on the same inputs and
        verify they produce numerically close outputs. These require a GPU where
-       FA4/FA3 is available and use bfloat16.
+       FA3 is available and use bfloat16.
 
     2. TestSDPAOnly: Tests that only exercise the SDPA fallback path. These can run
        on any device (CUDA, CPU, MPS) with the appropriate dtype for that device.
 """
 import torch
 import pytest
-import sys
-from types import SimpleNamespace
 import nanochat.flash_attention as fa_module
 from nanochat.flash_attention import (
     HAS_FA3,
-    HAS_FA4,
     HAS_FLASH_ATTN,
     backend_diagnostics,
     backend_status_message,
@@ -30,11 +27,11 @@ from nanochat.flash_attention import (
 from nanochat.engine import KVCache
 
 
-FAST_IMPL = 'fa4' if HAS_FA4 else ('fa3' if HAS_FA3 else None)
+FAST_IMPL = 'fa3' if HAS_FA3 else None
 
 
 def set_impl(impl):
-    """Set the implementation override ('fa4', 'fa3', 'sdpa', or None for auto)."""
+    """Set the implementation override ('fa3', 'sdpa', or None for auto)."""
     fa_module._override_impl = impl
 
 
@@ -61,7 +58,7 @@ def assert_close(t1, t2, name, atol=1e-2, rtol=1e-2):
 # =============================================================================
 # Accelerated backend vs SDPA comparison tests
 # =============================================================================
-@pytest.mark.skipif(not HAS_FLASH_ATTN, reason="FA4/FA3 required to compare implementations")
+@pytest.mark.skipif(not HAS_FLASH_ATTN, reason="FA3 required to compare implementations")
 class TestFastBackendVsSDPA:
     """Compare selected Flash Attention backend and SDPA produce close results."""
 
@@ -357,13 +354,6 @@ class TestSDPAOnly:
 class TestOverrideMechanism:
     """Test that the override mechanism works correctly."""
 
-    @pytest.mark.skipif(not HAS_FA4, reason="FA4 required")
-    def test_override_fa4(self):
-        """Test that override='fa4' uses FA4."""
-        set_impl('fa4')
-        assert fa_module._backend_name() == 'fa4'
-        set_impl(None)
-
     @pytest.mark.skipif(not HAS_FA3, reason="FA3 required")
     def test_override_fa3(self):
         """Test that override='fa3' uses FA3."""
@@ -389,16 +379,13 @@ class TestOverrideMechanism:
         msg = backend_status_message()
         assert f"selected={expected}" in msg
         assert "mode=auto" in msg
-        assert "fa4_probe=" in msg
         assert "fa3_probe=" in msg
 
     def test_backend_diagnostics_contains_probe_fields(self):
         diagnostics = backend_diagnostics()
-        assert diagnostics["selected_backend"] in {"fa4", "fa3", "sdpa"}
-        assert diagnostics["mode"] in {"auto", "fa4", "fa3", "sdpa"}
-        assert isinstance(diagnostics["has_fa4"], bool)
+        assert diagnostics["selected_backend"] in {"fa3", "sdpa"}
+        assert diagnostics["mode"] in {"auto", "fa3", "sdpa"}
         assert isinstance(diagnostics["has_fa3"], bool)
-        assert isinstance(diagnostics["fa4_probe"], str)
         assert isinstance(diagnostics["fa3_probe"], str)
 
     def test_backend_status_message_sdpa_override_is_explicit(self):
@@ -408,61 +395,10 @@ class TestOverrideMechanism:
         assert "mode=sdpa" in msg
         set_impl(None)
 
-    def test_auto_mode_prefers_fa4_when_available(self, monkeypatch):
-        monkeypatch.setattr(fa_module, "HAS_FA4", True)
+    def test_auto_mode_prefers_fa3_when_available(self, monkeypatch):
         monkeypatch.setattr(fa_module, "HAS_FA3", True)
         monkeypatch.setattr(fa_module, "_override_impl", None)
-        assert fa_module._backend_name() == "fa4"
-
-
-class TestBlackwellSelection:
-    def test_load_flash_attention_4_uses_blackwell_kernel(self, monkeypatch):
-        calls = []
-
-        class FakeInterface:
-            def flash_attn_func(self, *args, **kwargs):
-                return None
-
-            def flash_attn_with_kvcache(self, *args, **kwargs):
-                return None
-
-        def fake_get_kernel(name):
-            calls.append(name)
-            return SimpleNamespace(flash_attn_interface=FakeInterface())
-
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (10, 0))
-        monkeypatch.setitem(sys.modules, "kernels", SimpleNamespace(get_kernel=fake_get_kernel))
-
-        interface = fa_module._load_flash_attention_4()
-
-        assert interface is not None
-        assert calls == ["varunneal/flash-attention-4"]
-
-    def test_load_flash_attention_4_skips_pre_blackwell(self, monkeypatch):
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (9, 0))
-
-        interface = fa_module._load_flash_attention_4()
-
-        assert interface is None
-
-    def test_blackwell_kernel_load_failure_falls_back_to_sdpa(self, monkeypatch):
-        def fake_get_kernel(_name):
-            raise RuntimeError("kernel download failed")
-
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (10, 0))
-        monkeypatch.setitem(sys.modules, "kernels", SimpleNamespace(get_kernel=fake_get_kernel))
-
-        interface = fa_module._load_flash_attention_4()
-        assert interface is None
-        assert fa_module._fa4_probe == "load_error:RuntimeError"
-
-        monkeypatch.setattr(fa_module, "HAS_FA4", False)
-        monkeypatch.setattr(fa_module, "HAS_FA3", False)
-        monkeypatch.setattr(fa_module, "_override_impl", None)
-        assert fa_module._backend_name() == "sdpa"
+        assert fa_module._backend_name() == "fa3"
 
 
 if __name__ == "__main__":
@@ -472,7 +408,6 @@ if __name__ == "__main__":
         print(f"CUDA device: {torch.cuda.get_device_name()}")
         major, minor = torch.cuda.get_device_capability()
         print(f"Compute capability: {major}.{minor}")
-    print(f"HAS_FA4: {HAS_FA4}")
     print(f"HAS_FA3: {HAS_FA3}")
     print(f"HAS_FLASH_ATTN: {HAS_FLASH_ATTN}")
     print()
