@@ -891,6 +891,73 @@ def test_main_dry_run_writes_launch_manifest_json(tmp_path, monkeypatch):
     assert targets[1]["metrics_path"] == str(artifacts_dir / "07-1x10.json")
 
 
+def test_main_dry_run_writes_launch_script(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    launch_script = tmp_path / "receipts" / "pilot_launch.sh"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1024",
+            "--device-batch-size",
+            "2",
+            "--pilot-tokens",
+            "102400",
+            "--eval-every",
+            "50",
+            "--eval-tokens",
+            "4096",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--target",
+            "4x3",
+            "--target",
+            "1x10",
+            "--output-launch-script-sh",
+            str(launch_script),
+            "--resume-from-artifacts",
+            "--dry-run",
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+    script_text = launch_script.read_text(encoding="utf-8")
+    assert script_text.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "# [03] 4x3" in script_text
+    assert "# expected_log: " + str(artifacts_dir / "03-4x3.log") in script_text
+    assert "# expected_metrics: " + str(artifacts_dir / "03-4x3.json") in script_text
+    assert "# [07] 1x10" in script_text
+    assert "--target 4x3" in script_text
+    assert "--target 1x10" in script_text
+    assert "--resume-from-artifacts" in script_text
+
+
+def test_main_output_launch_script_requires_artifacts_dir(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1000",
+            "--device-batch-size",
+            "1",
+            "--pilot-tokens",
+            "100000",
+            "--eval-every",
+            "50",
+            "--output-launch-script-sh",
+            "pilot_launch.sh",
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="--output-launch-script-sh requires --artifacts-dir"):
+        pilot_sweep_script.main()
+
+
 def test_main_dry_run_creates_parent_dirs_for_runbook(tmp_path, monkeypatch):
     artifacts_dir = tmp_path / "artifacts"
     runbook_path = tmp_path / "nested" / "runbooks" / "pilot_runbook.md"
