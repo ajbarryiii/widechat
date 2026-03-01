@@ -842,6 +842,55 @@ def test_main_dry_run_writes_pilot_runbook(tmp_path, monkeypatch):
     assert "--extra-arg --compile" in runbook
 
 
+def test_main_dry_run_writes_launch_manifest_json(tmp_path, monkeypatch):
+    artifacts_dir = tmp_path / "artifacts"
+    manifest_path = tmp_path / "receipts" / "pilot_launch_manifest.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "pilot_sweep.py",
+            "--total-batch-size",
+            "1024",
+            "--device-batch-size",
+            "2",
+            "--pilot-tokens",
+            "102400",
+            "--eval-every",
+            "50",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--target",
+            "4x3",
+            "--target",
+            "1x10",
+            "--dry-run",
+            "--output-launch-manifest-json",
+            str(manifest_path),
+        ],
+    )
+
+    pilot_sweep_script.main()
+
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["is_full_grid"] is False
+    assert payload["resume_from_artifacts"] is False
+    assert payload["preflight"] is False
+    assert payload["dry_run"] is True
+    assert payload["artifacts_dir"] == str(artifacts_dir)
+    assert isinstance(payload["generated_at_utc"], str)
+
+    targets = payload["targets"]
+    assert [row["index"] for row in targets] == [3, 7]
+    assert [row["config"] for row in targets] == ["4x3", "1x10"]
+    assert all(isinstance(row["command_shell"], str) and row["command_shell"] for row in targets)
+
+    assert targets[0]["log_path"] == str(artifacts_dir / "03-4x3.log")
+    assert targets[0]["metrics_path"] == str(artifacts_dir / "03-4x3.json")
+    assert targets[1]["log_path"] == str(artifacts_dir / "07-1x10.log")
+    assert targets[1]["metrics_path"] == str(artifacts_dir / "07-1x10.json")
+
+
 def test_main_dry_run_creates_parent_dirs_for_runbook(tmp_path, monkeypatch):
     artifacts_dir = tmp_path / "artifacts"
     runbook_path = tmp_path / "nested" / "runbooks" / "pilot_runbook.md"

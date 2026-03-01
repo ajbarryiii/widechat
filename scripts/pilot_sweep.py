@@ -85,6 +85,12 @@ def _parse_args() -> argparse.Namespace:
         help="optional path to write machine-readable preflight receipt",
     )
     parser.add_argument(
+        "--output-launch-manifest-json",
+        type=str,
+        default="",
+        help="optional path to write machine-readable planned sweep commands",
+    )
+    parser.add_argument(
         "--output-blocked-md",
         type=str,
         default="",
@@ -445,6 +451,54 @@ def _run_preflight(
     }
 
 
+def _build_launch_manifest(
+    *,
+    args: argparse.Namespace,
+    selected_targets: list[tuple[int, PilotTarget]],
+    is_full_grid: bool,
+) -> dict[str, object]:
+    targets: list[dict[str, object]] = []
+    for index, target in selected_targets:
+        command, num_iterations = build_pilot_command(
+            target=target,
+            python_exe=args.python_exe,
+            max_seq_len=args.max_seq_len,
+            total_batch_size=args.total_batch_size,
+            device_batch_size=args.device_batch_size,
+            pilot_tokens=args.pilot_tokens,
+            eval_every=args.eval_every,
+            eval_tokens=args.eval_tokens,
+            device_type=args.device_type,
+            extra_args=args.extra_arg,
+        )
+        target_manifest: dict[str, object] = {
+            "index": index,
+            "config": target.label,
+            "depth": target.depth,
+            "n_branches": target.n_branches,
+            "aspect_ratio": target.aspect_ratio,
+            "num_iterations": num_iterations,
+            "token_budget": num_iterations * args.total_batch_size,
+            "command": command,
+            "command_shell": shlex.join(command),
+        }
+        if args.artifacts_dir:
+            log_path, metrics_path = _artifact_paths(args.artifacts_dir, index, target.label)
+            target_manifest["log_path"] = log_path
+            target_manifest["metrics_path"] = metrics_path
+        targets.append(target_manifest)
+
+    return {
+        "generated_at_utc": _now_utc(),
+        "is_full_grid": is_full_grid,
+        "resume_from_artifacts": args.resume_from_artifacts,
+        "preflight": args.preflight,
+        "dry_run": args.dry_run,
+        "artifacts_dir": args.artifacts_dir,
+        "targets": targets,
+    }
+
+
 def _run(args: argparse.Namespace) -> None:
     if args.resume_from_artifacts and not args.artifacts_dir:
         raise ValueError("--resume-from-artifacts requires --artifacts-dir")
@@ -460,6 +514,16 @@ def _run(args: argparse.Namespace) -> None:
         raise ValueError(
             "partial --target runs cannot emit ranking/finalist artifacts; run full grid or omit artifact outputs"
         )
+
+    if args.output_launch_manifest_json:
+        launch_manifest = _build_launch_manifest(
+            args=args,
+            selected_targets=selected_targets,
+            is_full_grid=is_full_grid,
+        )
+        _ensure_parent_dir(args.output_launch_manifest_json)
+        with open(args.output_launch_manifest_json, "w", encoding="utf-8") as f:
+            json.dump(launch_manifest, f, indent=2)
 
     ranked_json_path = args.output_json or os.path.join(args.artifacts_dir, "pilot_ranked_runs.json")
     ranking_md_path = args.output_md or os.path.join(args.artifacts_dir, "pilot_ranking.md")
